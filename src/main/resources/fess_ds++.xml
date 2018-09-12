@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE components PUBLIC "-//DBFLUTE//DTD LastaDi 1.0//EN"
+	"http://dbflute.org/meta/lastadi10.dtd">
+<components>
+	<component name="office365DataStore" class="org.codelibs.fess.ds.office365.Office365DataStore">
+		<postConstruct name="register"></postConstruct>
+	</component>
+</components>
