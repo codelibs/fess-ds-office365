@@ -17,6 +17,7 @@ package org.codelibs.fess.ds.office365;
 
 import com.microsoft.graph.models.extensions.DriveItem;
 import com.microsoft.graph.models.extensions.File;
+import com.microsoft.graph.models.extensions.IGraphServiceClient;
 import org.codelibs.fess.ds.callback.IndexUpdateCallbackImpl;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.mylasta.direction.FessConfig;
@@ -31,6 +32,11 @@ import java.util.concurrent.CountDownLatch;
 public class Office365DataStoreTest extends ContainerTestCase {
 
     private Office365DataStore dataStore;
+
+    // for test
+    private static final String tenant = "";
+    private static final String clientId = "";
+    private static final String clientSecret = "";
 
     @Override
     protected String prepareConfigFile() {
@@ -54,16 +60,36 @@ public class Office365DataStoreTest extends ContainerTestCase {
         super.tearDown();
     }
 
-    public void testProduction() {
-        // doStoreDataTest();
+    public void testProduction() throws Exception {
+        // doProductionTest();
     }
 
-    public void doStoreDataTest() {
+    private void doProductionTest() throws Exception {
+        doStoreDataTest();
+        doGetAccessTokenTest();
+        doGetClientTest();
+        doAPITest();
+    }
+
+    private void doGetAccessTokenTest() throws Exception {
+        Office365DataStore.getAccessToken(tenant, clientId, clientSecret);
+    }
+
+    private void doGetClientTest() throws Exception {
+        final String accessToken = Office365DataStore.getAccessToken(tenant, clientId, clientSecret);
+        Office365DataStore.getClient(accessToken);
+    }
+
+    private void doAPITest() throws Exception {
+        final IGraphServiceClient client = Office365DataStore.getClient(Office365DataStore.getAccessToken(tenant, clientId, clientSecret));
+    }
+
+    private void doStoreDataTest() {
         final DataConfig dataConfig = new DataConfig();
         final Map<String, String> paramMap = new HashMap<>();
-        paramMap.put("tenant", "");
-        paramMap.put("client_id", "");
-        paramMap.put("client_secret", "");
+        paramMap.put("tenant", tenant);
+        paramMap.put("client_id", clientId);
+        paramMap.put("client_secret", clientSecret);
         final Map<String, String> scriptMap = new HashMap<>();
         final Map<String, Object> defaultDataMap = new HashMap<>();
 

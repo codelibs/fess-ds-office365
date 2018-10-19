@@ -119,7 +119,7 @@ public class Office365DataStore extends AbstractDataStore {
         return "";
     }
 
-    private static String getAccessToken(final String tenant, final String clientId, final String clientSecret)
+    protected static String getAccessToken(final String tenant, final String clientId, final String clientSecret)
             throws MalformedURLException, ExecutionException, InterruptedException {
         final AuthenticationContext context =
                 new AuthenticationContext("https://login.microsoftonline.com/" + tenant + "/", false, Executors.newFixedThreadPool(1));
@@ -128,7 +128,7 @@ public class Office365DataStore extends AbstractDataStore {
         return result.getAccessToken();
     }
 
-    private static IGraphServiceClient getClient(final String accessToken) {
+    protected static IGraphServiceClient getClient(final String accessToken) {
         return GraphServiceClient.builder() //
                 .authenticationProvider(request -> request.addHeader("Authorization", "Bearer " + accessToken)) //
                 .logger(new DefaultLogger() {
