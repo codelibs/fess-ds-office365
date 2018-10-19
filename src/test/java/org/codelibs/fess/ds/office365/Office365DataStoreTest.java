@@ -18,15 +18,16 @@ package org.codelibs.fess.ds.office365;
 import com.microsoft.graph.models.extensions.DriveItem;
 import com.microsoft.graph.models.extensions.File;
 import com.microsoft.graph.models.extensions.IGraphServiceClient;
+import com.microsoft.graph.models.extensions.User;
+import com.microsoft.graph.options.Option;
+import com.microsoft.graph.options.QueryOption;
 import org.codelibs.fess.ds.callback.IndexUpdateCallbackImpl;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.mylasta.direction.FessConfig;
 import org.codelibs.fess.util.ComponentUtil;
 import org.dbflute.utflute.lastadi.ContainerTestCase;
 
-import java.util.Calendar;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
 
 public class Office365DataStoreTest extends ContainerTestCase {
@@ -82,6 +83,24 @@ public class Office365DataStoreTest extends ContainerTestCase {
 
     private void doAPITest() throws Exception {
         final IGraphServiceClient client = Office365DataStore.getClient(Office365DataStore.getAccessToken(tenant, clientId, clientSecret));
+        final List<Option> options = new ArrayList<>();
+        options.add(new QueryOption("$select", "id,displayName"));
+        client.users().buildRequest(options).get().getCurrentPage().forEach(u -> {
+            final User user = client.users(u.id).buildRequest(Collections.singletonList(new QueryOption("$select", "mySite"))).get();
+            if (user.mySite != null) {
+                System.out.println(u.displayName + "'s drive:");
+                client.users(u.id).drive().root().children().buildRequest().get().getCurrentPage().forEach(item -> {
+                    System.out.println(item.name);
+                });
+                System.out.println();
+            }
+        });
+
+        System.out.println(client.drive().buildRequest().get().name + "'s drive:");
+        client.drive().root().children().buildRequest().get().getCurrentPage().forEach(item -> {
+            System.out.println(item.name);
+        });
+        System.out.println();
     }
 
     private void doStoreDataTest() {
