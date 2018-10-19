@@ -134,12 +134,20 @@ public class Office365DataStore extends AbstractDataStore {
                 .logger(new DefaultLogger() {
                     @Override
                     public void logDebug(String message) {
-                        logger.debug(message);
+                        switch (getLoggingLevel()) {
+                        case DEBUG:
+                            logger.debug(message);
+                        case ERROR:
+                        }
                     }
 
                     @Override
                     public void logError(String message, Throwable throwable) {
-                        logger.error(message, throwable);
+                        switch (getLoggingLevel()) {
+                        case DEBUG:
+                        case ERROR:
+                            logger.error(message, throwable);
+                        }
                     }
                 }).buildClient();
     }
