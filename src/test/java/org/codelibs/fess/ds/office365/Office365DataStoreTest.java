@@ -131,6 +131,7 @@ public class Office365DataStoreTest extends ContainerTestCase {
         scriptMap.put(fessConfig.getIndexFieldMimetype(), "files.mimetype");
         scriptMap.put(fessConfig.getIndexFieldCreated(), "files.created");
         scriptMap.put(fessConfig.getIndexFieldLastModified(), "files.last_modified");
+        scriptMap.put(fessConfig.getIndexFieldContentLength(), "files.size");
         scriptMap.put(fessConfig.getIndexFieldUrl(), "files.web_url");
 
         dataStore.storeData(dataConfig, new IndexUpdateCallbackImpl() {

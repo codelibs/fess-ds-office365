@@ -55,6 +55,7 @@ public class Office365DataStore extends AbstractDataStore {
     private static final String FILES_MIMETYPE = "mimetype";
     private static final String FILES_CREATED = "created";
     private static final String FILES_LAST_MODIFIED = "last_modified";
+    private static final String FILES_SIZE = "size";
     private static final String FILES_WEB_URL = "web_url";
 
     private static final Logger logger = LoggerFactory.getLogger(Office365DataStore.class);
@@ -159,6 +160,7 @@ public class Office365DataStore extends AbstractDataStore {
         filesMap.put(FILES_MIMETYPE, item.file != null ? item.file.mimeType : null);
         filesMap.put(FILES_CREATED, item.createdDateTime.getTime());
         filesMap.put(FILES_LAST_MODIFIED, item.lastModifiedDateTime.getTime());
+        filesMap.put(FILES_SIZE, item.size);
         filesMap.put(FILES_WEB_URL, item.webUrl);
         resultMap.put(FILES, filesMap);
 
