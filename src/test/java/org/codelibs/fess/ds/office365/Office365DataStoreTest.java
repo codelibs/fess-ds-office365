@@ -172,13 +172,13 @@ public class Office365DataStoreTest extends ContainerTestCase {
                 assertEquals(item.webUrl, dataMap.get("web_url"));
                 latch.countDown();
             }
-        }, paramMap, scriptMap, defaultDataMap, item);
+        }, paramMap, scriptMap, defaultDataMap, null, null, item);
         latch.await();
     }
 
     public void testGetDriveItemContents() {
         final DriveItem item = new DriveItem();
-        assertEquals("", Office365DataStore.getDriveItemContents(item));
+        assertEquals("", Office365DataStore.getDriveItemContents(null, null, item));
     }
 
 }

@@ -28,6 +28,7 @@ import com.microsoft.graph.requests.extensions.GraphServiceClient;
 import com.microsoft.graph.requests.extensions.IDriveItemCollectionPage;
 import com.microsoft.graph.requests.extensions.IGroupCollectionPage;
 import com.microsoft.graph.requests.extensions.IUserCollectionPage;
+import org.apache.commons.io.IOUtils;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.ds.AbstractDataStore;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
@@ -36,6 +37,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.MalformedURLException;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
@@ -100,7 +102,7 @@ public class Office365DataStore extends AbstractDataStore {
         final Drive drive = client.drive().buildRequest().get();
         logger.debug("Start to store " + drive.name + "'s Drive");
         getDriveItemsInDrive(client, drive.id).forEach(item -> {
-            processDriveItem(callback, paramMap, scriptMap, defaultDataMap, item);
+            processDriveItem(callback, paramMap, scriptMap, defaultDataMap, client, drive.id, item);
         });
         logger.debug("----------");
     }
@@ -115,7 +117,7 @@ public class Office365DataStore extends AbstractDataStore {
                     final Drive drive = client.users(u.id).drive().buildRequest().get();
                     logger.debug("Start to store " + u.displayName + "'s Drive");
                     getDriveItemsInDrive(client, drive.id).forEach(item -> {
-                        processDriveItem(callback, paramMap, scriptMap, defaultDataMap, item);
+                        processDriveItem(callback, paramMap, scriptMap, defaultDataMap, client, drive.id, item);
                     });
                     logger.debug("----------");
                 }
@@ -137,7 +139,7 @@ public class Office365DataStore extends AbstractDataStore {
                 final Drive drive = client.groups(g.id).drive().buildRequest().get();
                 logger.debug("Start to store " + g.displayName + "'s Drive");
                 getDriveItemsInDrive(client, drive.id).forEach(item -> {
-                    processDriveItem(callback, paramMap, scriptMap, defaultDataMap, item);
+                    processDriveItem(callback, paramMap, scriptMap, defaultDataMap, client, drive.id, item);
                 });
                 logger.debug("----------");
             });
@@ -149,14 +151,15 @@ public class Office365DataStore extends AbstractDataStore {
     }
 
     protected void processDriveItem(final IndexUpdateCallback callback, final Map<String, String> paramMap,
-            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final DriveItem item) {
+            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IGraphServiceClient client,
+            final String driveId, final DriveItem item) {
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
         final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
         final Map<String, Object> filesMap = new HashMap<>();
 
         filesMap.put(FILES_NAME, item.name);
         filesMap.put(FILES_DESCRIPTION, item.description != null ? item.description : "");
-        filesMap.put(FILES_CONTENTS, getDriveItemContents(item));
+        filesMap.put(FILES_CONTENTS, getDriveItemContents(client, driveId, item));
         filesMap.put(FILES_MIMETYPE, item.file != null ? item.file.mimeType : null);
         filesMap.put(FILES_CREATED, item.createdDateTime.getTime());
         filesMap.put(FILES_LAST_MODIFIED, item.lastModifiedDateTime.getTime());
@@ -177,7 +180,16 @@ public class Office365DataStore extends AbstractDataStore {
         }
     }
 
-    protected static String getDriveItemContents(final DriveItem item) {
+    protected static String getDriveItemContents(final IGraphServiceClient client, final String driveId, final DriveItem item) {
+        if (item.file != null) {
+            if (item.file.mimeType.matches("text/.*")) {
+                try {
+                    return IOUtils.toString(client.drives(driveId).items(item.id).content().buildRequest().get(), StandardCharsets.UTF_8);
+                } catch (final Exception e) {
+                    logger.warn("Failed to get contents of " + item.name, e);
+                }
+            }
+        }
         return "";
     }
 
