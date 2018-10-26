@@ -26,11 +26,15 @@ import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.mylasta.direction.FessConfig;
 import org.codelibs.fess.util.ComponentUtil;
 import org.dbflute.utflute.lastadi.ContainerTestCase;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 
 public class Office365DataStoreTest extends ContainerTestCase {
+
+    private static final Logger logger = LoggerFactory.getLogger(Office365DataStoreTest.class);
 
     private Office365DataStore dataStore;
 
@@ -88,19 +92,19 @@ public class Office365DataStoreTest extends ContainerTestCase {
         client.users().buildRequest(options).get().getCurrentPage().forEach(u -> {
             final User user = client.users(u.id).buildRequest(Collections.singletonList(new QueryOption("$select", "mySite"))).get();
             if (user.mySite != null) {
-                System.out.println(u.displayName + "'s drive:");
+                logger.debug("Files in " + u.displayName + "'s drive:");
                 client.users(u.id).drive().root().children().buildRequest().get().getCurrentPage().forEach(item -> {
-                    System.out.println(item.name);
+                    logger.debug(item.name);
                 });
-                System.out.println();
+                logger.debug("----------");
             }
         });
 
-        System.out.println(client.drive().buildRequest().get().name + "'s drive:");
+        logger.debug("Files in " + client.drive().buildRequest().get().name + "'s drive:");
         client.drive().root().children().buildRequest().get().getCurrentPage().forEach(item -> {
-            System.out.println(item.name);
+            logger.debug(item.name);
         });
-        System.out.println();
+        logger.debug("----------");
     }
 
     private void doStoreDataTest() {
@@ -123,7 +127,7 @@ public class Office365DataStoreTest extends ContainerTestCase {
         dataStore.storeData(dataConfig, new IndexUpdateCallbackImpl() {
             @Override
             public void store(Map<String, String> paramMap, Map<String, Object> dataMap) {
-                System.out.println(dataMap);
+                logger.debug(dataMap.toString());
             }
         }, paramMap, scriptMap, defaultDataMap);
     }
