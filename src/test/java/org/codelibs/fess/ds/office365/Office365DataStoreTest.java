@@ -105,6 +105,15 @@ public class Office365DataStoreTest extends ContainerTestCase {
             logger.debug(item.name);
         });
         logger.debug("----------");
+
+        options.add(new QueryOption("$filter", "groupTypes/any(c:c eq 'Unified')"));
+        client.groups().buildRequest(options).get().getCurrentPage().forEach(g -> {
+            logger.debug("Files in " + g.displayName + "'s drive:");
+            client.groups(g.id).drive().root().children().buildRequest().get().getCurrentPage().forEach(item -> {
+                logger.debug(item.name);
+            });
+            logger.debug("----------");
+        });
     }
 
     private void doStoreDataTest() {
