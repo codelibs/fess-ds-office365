@@ -26,6 +26,7 @@ import com.microsoft.graph.models.extensions.User;
 import com.microsoft.graph.options.QueryOption;
 import com.microsoft.graph.requests.extensions.GraphServiceClient;
 import com.microsoft.graph.requests.extensions.IDriveItemCollectionPage;
+import com.microsoft.graph.requests.extensions.IGroupCollectionPage;
 import com.microsoft.graph.requests.extensions.IUserCollectionPage;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.ds.AbstractDataStore;
@@ -89,6 +90,7 @@ public class Office365DataStore extends AbstractDataStore {
         final IGraphServiceClient client = getClient(accessToken);
         storeSharedDocumentsDrive(callback, paramMap, scriptMap, defaultDataMap, client);
         storeUsersDrive(callback, paramMap, scriptMap, defaultDataMap, client);
+        storeGroupsDrive(callback, paramMap, scriptMap, defaultDataMap, client);
 
     }
 
@@ -116,6 +118,27 @@ public class Office365DataStore extends AbstractDataStore {
                     });
                     logger.debug("----------");
                 }
+            });
+            if (page.getNextPage() == null) {
+                break;
+            }
+            page = page.getNextPage().buildRequest().get();
+        }
+    }
+
+    protected void storeGroupsDrive(final IndexUpdateCallback callback, final Map<String, String> paramMap,
+            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
+        IGroupCollectionPage page =
+                client.groups().buildRequest(Collections.singletonList(new QueryOption("$filter", "groupTypes/any(c:c eq 'Unified')")))
+                        .get();
+        while (true) {
+            page.getCurrentPage().forEach(g -> {
+                final Drive drive = client.groups(g.id).drive().buildRequest().get();
+                logger.debug("Start to store " + g.displayName + "'s Drive");
+                getDriveItemsInDrive(client, drive.id).forEach(item -> {
+                    processDriveItem(callback, paramMap, scriptMap, defaultDataMap, item);
+                });
+                logger.debug("----------");
             });
             if (page.getNextPage() == null) {
                 break;
