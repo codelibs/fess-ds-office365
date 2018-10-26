@@ -22,8 +22,11 @@ import com.microsoft.graph.logger.DefaultLogger;
 import com.microsoft.graph.models.extensions.Drive;
 import com.microsoft.graph.models.extensions.DriveItem;
 import com.microsoft.graph.models.extensions.IGraphServiceClient;
+import com.microsoft.graph.models.extensions.User;
+import com.microsoft.graph.options.QueryOption;
 import com.microsoft.graph.requests.extensions.GraphServiceClient;
 import com.microsoft.graph.requests.extensions.IDriveItemCollectionPage;
+import com.microsoft.graph.requests.extensions.IUserCollectionPage;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.ds.AbstractDataStore;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
@@ -85,6 +88,7 @@ public class Office365DataStore extends AbstractDataStore {
 
         final IGraphServiceClient client = getClient(accessToken);
         storeSharedDocumentsDrive(callback, paramMap, scriptMap, defaultDataMap, client);
+        storeUsersDrive(callback, paramMap, scriptMap, defaultDataMap, client);
 
     }
 
@@ -96,6 +100,28 @@ public class Office365DataStore extends AbstractDataStore {
             processDriveItem(callback, paramMap, scriptMap, defaultDataMap, item);
         });
         logger.debug("----------");
+    }
+
+    protected void storeUsersDrive(final IndexUpdateCallback callback, final Map<String, String> paramMap,
+            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
+        IUserCollectionPage page = client.users().buildRequest().get();
+        while (true) {
+            page.getCurrentPage().forEach(u -> {
+                final User user = client.users(u.id).buildRequest(Collections.singletonList(new QueryOption("$select", "mySite"))).get();
+                if (user.mySite != null) {
+                    final Drive drive = client.users(u.id).drive().buildRequest().get();
+                    logger.debug("Start to store " + u.displayName + "'s Drive");
+                    getDriveItemsInDrive(client, drive.id).forEach(item -> {
+                        processDriveItem(callback, paramMap, scriptMap, defaultDataMap, item);
+                    });
+                    logger.debug("----------");
+                }
+            });
+            if (page.getNextPage() == null) {
+                break;
+            }
+            page = page.getNextPage().buildRequest().get();
+        }
     }
 
     protected void processDriveItem(final IndexUpdateCallback callback, final Map<String, String> paramMap,
