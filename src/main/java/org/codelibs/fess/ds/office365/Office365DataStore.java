@@ -19,9 +19,11 @@ import com.microsoft.aad.adal4j.AuthenticationContext;
 import com.microsoft.aad.adal4j.AuthenticationResult;
 import com.microsoft.aad.adal4j.ClientCredential;
 import com.microsoft.graph.logger.DefaultLogger;
+import com.microsoft.graph.models.extensions.Drive;
 import com.microsoft.graph.models.extensions.DriveItem;
 import com.microsoft.graph.models.extensions.IGraphServiceClient;
 import com.microsoft.graph.requests.extensions.GraphServiceClient;
+import com.microsoft.graph.requests.extensions.IDriveItemCollectionPage;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.ds.AbstractDataStore;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
@@ -30,9 +32,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.MalformedURLException;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 
@@ -84,7 +84,18 @@ public class Office365DataStore extends AbstractDataStore {
         }
 
         final IGraphServiceClient client = getClient(accessToken);
+        storeSharedDocumentsDrive(callback, paramMap, scriptMap, defaultDataMap, client);
 
+    }
+
+    protected void storeSharedDocumentsDrive(final IndexUpdateCallback callback, final Map<String, String> paramMap,
+            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
+        final Drive drive = client.drive().buildRequest().get();
+        logger.debug("Start to store " + drive.name + "'s Drive");
+        getDriveItemsInDrive(client, drive.id).forEach(item -> {
+            processDriveItem(callback, paramMap, scriptMap, defaultDataMap, item);
+        });
+        logger.debug("----------");
     }
 
     protected void processDriveItem(final IndexUpdateCallback callback, final Map<String, String> paramMap,
@@ -94,9 +105,9 @@ public class Office365DataStore extends AbstractDataStore {
         final Map<String, Object> filesMap = new HashMap<>();
 
         filesMap.put(FILES_NAME, item.name);
-        filesMap.put(FILES_DESCRIPTION, item.description);
+        filesMap.put(FILES_DESCRIPTION, item.description != null ? item.description : "");
         filesMap.put(FILES_CONTENTS, getDriveItemContents(item));
-        filesMap.put(FILES_MIMETYPE, item.file.mimeType);
+        filesMap.put(FILES_MIMETYPE, item.file != null ? item.file.mimeType : null);
         filesMap.put(FILES_CREATED, item.createdDateTime.getTime());
         filesMap.put(FILES_LAST_MODIFIED, item.lastModifiedDateTime.getTime());
         filesMap.put(FILES_WEB_URL, item.webUrl);
@@ -117,6 +128,34 @@ public class Office365DataStore extends AbstractDataStore {
 
     protected static String getDriveItemContents(final DriveItem item) {
         return "";
+    }
+
+    protected static List<DriveItem> getDriveItemsInDrive(final IGraphServiceClient client, final String driveId) {
+        return getDriveItemsChildren(client, driveId, null);
+    }
+
+    private static List<DriveItem> getDriveItemsChildren(final IGraphServiceClient client, final String driveId, final DriveItem root) {
+        final List<DriveItem> items = new ArrayList<>();
+        IDriveItemCollectionPage page;
+        if (root == null) {
+            page = client.drives(driveId).root().children().buildRequest().get();
+        } else {
+            items.add(root);
+            if (root.folder == null) {
+                return items;
+            }
+            page = client.drives(driveId).items(root.id).children().buildRequest().get();
+        }
+        while (true) {
+            page.getCurrentPage().forEach(i -> {
+                items.addAll(getDriveItemsChildren(client, driveId, i));
+            });
+            if (page.getNextPage() == null) {
+                break;
+            }
+            page = page.getNextPage().buildRequest().get();
+        }
+        return items;
     }
 
     protected static String getAccessToken(final String tenant, final String clientId, final String clientSecret)
