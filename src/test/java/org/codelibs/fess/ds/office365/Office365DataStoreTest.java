@@ -15,10 +15,7 @@
  */
 package org.codelibs.fess.ds.office365;
 
-import com.microsoft.graph.models.extensions.DriveItem;
-import com.microsoft.graph.models.extensions.File;
-import com.microsoft.graph.models.extensions.IGraphServiceClient;
-import com.microsoft.graph.models.extensions.User;
+import com.microsoft.graph.models.extensions.*;
 import com.microsoft.graph.options.Option;
 import com.microsoft.graph.options.QueryOption;
 import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
@@ -31,6 +28,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.Calendar;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 
 public class Office365DataStoreTest extends ContainerTestCase {
@@ -69,31 +68,34 @@ public class Office365DataStoreTest extends ContainerTestCase {
         super.tearDown();
     }
 
-    public void testProduction() throws Exception {
-        // doProductionTest();
+    public void testGetAccessToken() throws Exception {
+        // doGetAccessToken();
     }
 
-    private void doProductionTest() throws Exception {
-        doStoreDataTest();
-        doGetAccessTokenTest();
-        doGetClientTest();
-        doAPITest();
+    private void doGetAccessToken() throws Exception {
+        final String accessToken = Office365DataStore.getAccessToken(tenant, clientId, clientSecret);
+        logger.debug("AccessToken: " + accessToken);
     }
 
-    private void doGetAccessTokenTest() throws Exception {
-        Office365DataStore.getAccessToken(tenant, clientId, clientSecret);
+    public void testGetClient() throws Exception {
+        // doGetClient();
     }
 
-    private void doGetClientTest() throws Exception {
+    private void doGetClient() throws Exception {
         final String accessToken = Office365DataStore.getAccessToken(tenant, clientId, clientSecret);
         Office365DataStore.getClient(accessToken);
     }
 
-    private void doAPITest() throws Exception {
+    public void testUsers() throws Exception {
+        // doUsersTest();
+    }
+
+    private void doUsersTest() throws Exception {
         final IGraphServiceClient client = Office365DataStore.getClient(Office365DataStore.getAccessToken(tenant, clientId, clientSecret));
         final List<Option> options = new ArrayList<>();
         options.add(new QueryOption("$select", "id,displayName"));
-        client.users().buildRequest(options).get().getCurrentPage().forEach(u -> {
+        final List<User> users = client.users().buildRequest(options).get().getCurrentPage();
+        users.forEach(u -> {
             final User user = client.users(u.id).buildRequest(Collections.singletonList(new QueryOption("$select", "mySite"))).get();
             if (user.mySite != null) {
                 logger.debug("Files in " + u.displayName + "'s drive:");
@@ -103,24 +105,60 @@ public class Office365DataStoreTest extends ContainerTestCase {
                 logger.debug("----------");
             }
         });
+    }
 
-        logger.debug("Files in " + client.drive().buildRequest().get().name + "'s drive:");
-        client.drive().root().children().buildRequest().get().getCurrentPage().forEach(item -> {
-            logger.debug(item.name);
-        });
-        logger.debug("----------");
+    public void testGroups() throws Exception {
+        // doGroupsTest();
+    }
 
+    private void doGroupsTest() throws Exception {
+        final IGraphServiceClient client = Office365DataStore.getClient(Office365DataStore.getAccessToken(tenant, clientId, clientSecret));
+        final List<Option> options = new ArrayList<>();
+        options.add(new QueryOption("$select", "id,displayName"));
         options.add(new QueryOption("$filter", "groupTypes/any(c:c eq 'Unified')"));
-        client.groups().buildRequest(options).get().getCurrentPage().forEach(g -> {
+        final List<Group> groups = client.groups().buildRequest(options).get().getCurrentPage();
+        groups.forEach(g -> {
             logger.debug("Files in " + g.displayName + "'s drive:");
             client.groups(g.id).drive().root().children().buildRequest().get().getCurrentPage().forEach(item -> {
                 logger.debug(item.name);
             });
             logger.debug("----------");
         });
+        groups.forEach(g -> {
+            logger.debug(g.displayName + "'s Notebooks:");
+            client.groups(g.id).onenote().notebooks().buildRequest().get().getCurrentPage().forEach(notebook -> {
+                logger.debug(notebook.displayName);
+            });
+            logger.debug("----------");
+        });
     }
 
-    private void doStoreDataTest() {
+    public void testSites() throws Exception {
+        // doSitesTest();
+    }
+
+    private void doSitesTest() throws Exception {
+        final IGraphServiceClient client = Office365DataStore.getClient(Office365DataStore.getAccessToken(tenant, clientId, clientSecret));
+        final List<Option> options = new ArrayList<>();
+        options.add(new QueryOption("$select", "id,displayName"));
+        logger.debug("Files in " + client.drive().buildRequest().get().name + "'s drive:");
+        client.drive().root().children().buildRequest().get().getCurrentPage().forEach(item -> {
+            logger.debug(item.name);
+        });
+        logger.debug("----------");
+        logger.debug("Site root's Notebooks:");
+        final Site root = client.sites("root").buildRequest(options).get();
+        client.sites(root.id).onenote().notebooks().buildRequest(options).get().getCurrentPage().forEach(notebook -> {
+            logger.debug(notebook.displayName);
+        });
+        logger.debug("----------");
+    }
+
+    public void testStoreData() {
+        // doStoreData();
+    }
+
+    private void doStoreData() {
         final DataConfig dataConfig = new DataConfig();
         final Map<String, String> paramMap = new HashMap<>();
         paramMap.put("tenant", tenant);
@@ -151,7 +189,6 @@ public class Office365DataStoreTest extends ContainerTestCase {
         final Map<String, String> scriptMap = new HashMap<>();
         scriptMap.put("name", "files.name");
         scriptMap.put("description", "files.description");
-        scriptMap.put("mimetype", "files.mimetype");
         scriptMap.put("created", "files.created");
         scriptMap.put("last_modified", "files.last_modified");
         scriptMap.put("web_url", "files.web_url");
@@ -159,8 +196,6 @@ public class Office365DataStoreTest extends ContainerTestCase {
         final DriveItem item = new DriveItem();
         item.name = "hoge";
         item.description = "hogehoge";
-        item.file = new File();
-        item.file.mimeType = "fuga";
         item.createdDateTime = Calendar.getInstance();
         item.lastModifiedDateTime = Calendar.getInstance();
         item.webUrl = "piyo";
@@ -170,7 +205,6 @@ public class Office365DataStoreTest extends ContainerTestCase {
             public void store(Map<String, String> paramMap, Map<String, Object> dataMap) {
                 assertEquals(item.name, dataMap.get("name"));
                 assertEquals(item.description, dataMap.get("description"));
-                assertEquals(item.file.mimeType, dataMap.get("mimetype"));
                 assertEquals(item.createdDateTime.getTime(), dataMap.get("created"));
                 assertEquals(item.lastModifiedDateTime.getTime(), dataMap.get("last_modified"));
                 assertEquals(item.webUrl, dataMap.get("web_url"));
