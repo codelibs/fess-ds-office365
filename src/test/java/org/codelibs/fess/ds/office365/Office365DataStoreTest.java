@@ -21,6 +21,7 @@ import com.microsoft.graph.models.extensions.IGraphServiceClient;
 import com.microsoft.graph.models.extensions.User;
 import com.microsoft.graph.options.Option;
 import com.microsoft.graph.options.QueryOption;
+import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
 import org.codelibs.fess.ds.callback.IndexUpdateCallbackImpl;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.mylasta.direction.FessConfig;
@@ -56,6 +57,9 @@ public class Office365DataStoreTest extends ContainerTestCase {
     @Override
     public void setUp() throws Exception {
         super.setUp();
+        final TikaExtractor tikaExtractor = new TikaExtractor();
+        tikaExtractor.init();
+        ComponentUtil.register(tikaExtractor, "tikaExtractor");
         dataStore = new Office365DataStore();
     }
 

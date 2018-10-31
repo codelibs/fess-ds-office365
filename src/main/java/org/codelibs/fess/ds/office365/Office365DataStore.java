@@ -28,16 +28,18 @@ import com.microsoft.graph.requests.extensions.GraphServiceClient;
 import com.microsoft.graph.requests.extensions.IDriveItemCollectionPage;
 import com.microsoft.graph.requests.extensions.IGroupCollectionPage;
 import com.microsoft.graph.requests.extensions.IUserCollectionPage;
-import org.apache.commons.io.IOUtils;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
+import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
 import org.codelibs.fess.ds.AbstractDataStore;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.es.config.exentity.DataConfig;
+import org.codelibs.fess.util.ComponentUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.MalformedURLException;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
@@ -182,11 +184,13 @@ public class Office365DataStore extends AbstractDataStore {
 
     protected static String getDriveItemContents(final IGraphServiceClient client, final String driveId, final DriveItem item) {
         if (item.file != null) {
-            if (item.file.mimeType.matches("text/.*")) {
-                try {
-                    return IOUtils.toString(client.drives(driveId).items(item.id).content().buildRequest().get(), StandardCharsets.UTF_8);
-                } catch (final Exception e) {
-                    logger.warn("Failed to get contents of " + item.name, e);
+            final String mimeType = item.file.mimeType;
+            if (mimeType.matches("application/vnd\\.openxmlformats-officedocument\\.(.*)") || mimeType.matches("text/.*")) {
+                try (final InputStream in = client.drives(driveId).items(item.id).content().buildRequest().get()) {
+                    final TikaExtractor extractor = ComponentUtil.getComponent("tikaExtractor");
+                    return extractor.getText(in, null).getContent();
+                } catch (final IOException e) {
+                    logger.warn("Failed to get contents of DriveItem: " + item.name, e);
                 }
             }
         }
