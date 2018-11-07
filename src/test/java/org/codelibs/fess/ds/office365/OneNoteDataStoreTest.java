@@ -75,6 +75,11 @@ public class OneNoteDataStoreTest extends ContainerTestCase {
         final Map<String, Object> defaultDataMap = new HashMap<>();
 
         final FessConfig fessConfig = ComponentUtil.getFessConfig();
+        scriptMap.put(fessConfig.getIndexFieldTitle(), "notebooks.name");
+        scriptMap.put(fessConfig.getIndexFieldContent(), "notebooks.contents");
+        scriptMap.put(fessConfig.getIndexFieldCreated(), "notebooks.created");
+        scriptMap.put(fessConfig.getIndexFieldLastModified(), "notebooks.last_modified");
+        scriptMap.put(fessConfig.getIndexFieldUrl(), "notebooks.web_url");
 
         dataStore.storeData(dataConfig, new IndexUpdateCallbackImpl() {
             @Override
