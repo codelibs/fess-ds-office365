@@ -15,16 +15,11 @@
  */
 package org.codelibs.fess.ds.office365;
 
-import com.microsoft.aad.adal4j.AuthenticationContext;
-import com.microsoft.aad.adal4j.AuthenticationResult;
-import com.microsoft.aad.adal4j.ClientCredential;
-import com.microsoft.graph.logger.DefaultLogger;
 import com.microsoft.graph.models.extensions.Drive;
 import com.microsoft.graph.models.extensions.DriveItem;
 import com.microsoft.graph.models.extensions.IGraphServiceClient;
 import com.microsoft.graph.models.extensions.User;
 import com.microsoft.graph.options.QueryOption;
-import com.microsoft.graph.requests.extensions.GraphServiceClient;
 import com.microsoft.graph.requests.extensions.IDriveItemCollectionPage;
 import com.microsoft.graph.requests.extensions.IGroupCollectionPage;
 import com.microsoft.graph.requests.extensions.IUserCollectionPage;
@@ -42,14 +37,10 @@ import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
 
-public class Office365DataStore extends AbstractDataStore {
+import static org.codelibs.fess.ds.office365.Office365Helper.*;
 
-    // parameters
-    private static final String TENANT_PARAM = "tenant";
-    private static final String CLIENT_ID_PARAM = "client_id";
-    private static final String CLIENT_SECRET_PARAM = "client_secret";
+public class OneDriveDataStore extends AbstractDataStore {
 
     // scripts
     private static final String FILES = "files";
@@ -62,10 +53,10 @@ public class Office365DataStore extends AbstractDataStore {
     private static final String FILES_SIZE = "size";
     private static final String FILES_WEB_URL = "web_url";
 
-    private static final Logger logger = LoggerFactory.getLogger(Office365DataStore.class);
+    private static final Logger logger = LoggerFactory.getLogger(OneDriveDataStore.class);
 
     protected String getName() {
-        return "Office365";
+        return "OneDrive";
     }
 
     @Override
@@ -92,7 +83,7 @@ public class Office365DataStore extends AbstractDataStore {
             return;
         }
 
-        final IGraphServiceClient client = getClient(accessToken);
+        final IGraphServiceClient client = getClient(accessToken, logger);
         storeSharedDocumentsDrive(callback, paramMap, scriptMap, defaultDataMap, client);
         storeUsersDrive(callback, paramMap, scriptMap, defaultDataMap, client);
         storeGroupsDrive(callback, paramMap, scriptMap, defaultDataMap, client);
@@ -223,39 +214,6 @@ public class Office365DataStore extends AbstractDataStore {
             page = page.getNextPage().buildRequest().get();
         }
         return items;
-    }
-
-    protected static String getAccessToken(final String tenant, final String clientId, final String clientSecret)
-            throws MalformedURLException, ExecutionException, InterruptedException {
-        final AuthenticationContext context =
-                new AuthenticationContext("https://login.microsoftonline.com/" + tenant + "/", false, Executors.newFixedThreadPool(1));
-        final AuthenticationResult result =
-                context.acquireToken("https://graph.microsoft.com", new ClientCredential(clientId, clientSecret), null).get();
-        return result.getAccessToken();
-    }
-
-    protected static IGraphServiceClient getClient(final String accessToken) {
-        return GraphServiceClient.builder() //
-                .authenticationProvider(request -> request.addHeader("Authorization", "Bearer " + accessToken)) //
-                .logger(new DefaultLogger() {
-                    @Override
-                    public void logDebug(String message) {
-                        switch (getLoggingLevel()) {
-                        case DEBUG:
-                            logger.debug(message);
-                        case ERROR:
-                        }
-                    }
-
-                    @Override
-                    public void logError(String message, Throwable throwable) {
-                        switch (getLoggingLevel()) {
-                        case DEBUG:
-                        case ERROR:
-                            logger.error(message, throwable);
-                        }
-                    }
-                }).buildClient();
     }
 
 }
