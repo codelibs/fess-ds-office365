@@ -15,12 +15,6 @@
  */
 package org.codelibs.fess.ds.office365;
 
-import com.microsoft.graph.models.extensions.Group;
-import com.microsoft.graph.models.extensions.IGraphServiceClient;
-import com.microsoft.graph.models.extensions.Site;
-import com.microsoft.graph.models.extensions.User;
-import com.microsoft.graph.options.Option;
-import com.microsoft.graph.options.QueryOption;
 import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
 import org.codelibs.fess.ds.callback.IndexUpdateCallbackImpl;
 import org.codelibs.fess.es.config.exentity.DataConfig;
@@ -30,11 +24,9 @@ import org.dbflute.utflute.lastadi.ContainerTestCase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.InputStream;
-import java.util.*;
+import java.util.HashMap;
+import java.util.Map;
 
-import static org.codelibs.fess.ds.office365.Office365Helper.getAccessToken;
-import static org.codelibs.fess.ds.office365.Office365Helper.getClient;
 import static org.codelibs.fess.ds.office365.Office365HelperTest.*;
 
 public class OneNoteDataStoreTest extends ContainerTestCase {
@@ -56,9 +48,6 @@ public class OneNoteDataStoreTest extends ContainerTestCase {
     @Override
     public void setUp() throws Exception {
         super.setUp();
-        final TikaExtractor tikaExtractor = new TikaExtractor();
-        tikaExtractor.init();
-        ComponentUtil.register(tikaExtractor, "tikaExtractor");
         dataStore = new OneNoteDataStore();
     }
 
@@ -68,94 +57,15 @@ public class OneNoteDataStoreTest extends ContainerTestCase {
         super.tearDown();
     }
 
-    public void testUsers() throws Exception {
-        // doUsersTest();
-    }
-
-    private void doUsersTest() throws Exception {
-        final IGraphServiceClient client = getClient(getAccessToken(tenant, clientId, clientSecret));
-        final List<Option> options = new ArrayList<>();
-        options.add(new QueryOption("$select", "id,displayName"));
-        final List<User> users = client.users().buildRequest(options).get().getCurrentPage();
-        users.forEach(u -> {
-            final User user = client.users(u.id).buildRequest(Collections.singletonList(new QueryOption("$select", "mySite"))).get();
-            if (user.mySite != null) {
-                logger.debug(u.displayName + "'s Notebooks:");
-                client.users(u.id).onenote().notebooks().buildRequest().get().getCurrentPage().forEach(notebook -> {
-                    logger.debug("Note: " + notebook.displayName);
-                    client.users(u.id).onenote().notebooks(notebook.id).sections().buildRequest().get().getCurrentPage()
-                            .forEach(section -> {
-                                logger.debug(" Section: " + section.displayName);
-                                client.users(u.id).onenote().sections(section.id).pages().buildRequest().get().getCurrentPage()
-                                        .forEach(page -> {
-                                            logger.debug("  Page: " + page.title);
-                                            final InputStream in =
-                                                    client.users(u.id).onenote().pages(page.id).content().buildRequest().get();
-                                            final TikaExtractor extractor = ComponentUtil.getComponent("tikaExtractor");
-                                            logger.debug("   Content: " + extractor.getText(in, null).getContent());
-                                        });
-                            });
-                });
-            }
-        });
-    }
-
-    public void testGroups() throws Exception {
-        // doGroupsTest();
-    }
-
-    private void doGroupsTest() throws Exception {
-        final IGraphServiceClient client = getClient(getAccessToken(tenant, clientId, clientSecret));
-        final List<Option> options = new ArrayList<>();
-        options.add(new QueryOption("$select", "id,displayName"));
-        options.add(new QueryOption("$filter", "groupTypes/any(c:c eq 'Unified')"));
-        final List<Group> groups = client.groups().buildRequest(options).get().getCurrentPage();
-        groups.forEach(g -> {
-            logger.debug(g.displayName + "'s Notebooks:");
-            client.groups(g.id).onenote().notebooks().buildRequest().get().getCurrentPage().forEach(notebook -> {
-                logger.debug("Note: " + notebook.displayName);
-                client.groups(g.id).onenote().notebooks(notebook.id).sections().buildRequest().get().getCurrentPage().forEach(section -> {
-                    logger.debug(" Section: " + section.displayName);
-                    client.groups(g.id).onenote().sections(section.id).pages().buildRequest().get().getCurrentPage().forEach(page -> {
-                        logger.debug("  Page: " + page.title);
-                        final InputStream in = client.groups(g.id).onenote().pages(page.id).content().buildRequest().get();
-                        final TikaExtractor extractor = ComponentUtil.getComponent("tikaExtractor");
-                        logger.debug("   Content: " + extractor.getText(in, null).getContent());
-                    });
-                });
-            });
-        });
-    }
-
-    public void testSites() throws Exception {
-        // doSitesTest();
-    }
-
-    private void doSitesTest() throws Exception {
-        final IGraphServiceClient client = getClient(getAccessToken(tenant, clientId, clientSecret));
-        final List<Option> options = new ArrayList<>();
-        options.add(new QueryOption("$select", "id,displayName"));
-        logger.debug("Site root's Notebooks:");
-        final Site root = client.sites("root").buildRequest(options).get();
-        client.sites(root.id).onenote().notebooks().buildRequest(options).get().getCurrentPage().forEach(notebook -> {
-            logger.debug("Note: " + notebook.displayName);
-            client.sites(root.id).onenote().notebooks(notebook.id).sections().buildRequest().get().getCurrentPage().forEach(section -> {
-                logger.debug(" Section: " + section.displayName);
-                client.sites(root.id).onenote().sections(section.id).pages().buildRequest().get().getCurrentPage().forEach(page -> {
-                    logger.debug("  Page: " + page.title);
-                    final InputStream in = client.sites(root.id).onenote().pages(page.id).content().buildRequest().get();
-                    final TikaExtractor extractor = ComponentUtil.getComponent("tikaExtractor");
-                    logger.debug("   Content: " + extractor.getText(in, null).getContent());
-                });
-            });
-        });
-    }
-
     public void testStoreData() {
         // doStoreData();
     }
 
     private void doStoreData() {
+        final TikaExtractor tikaExtractor = new TikaExtractor();
+        tikaExtractor.init();
+        ComponentUtil.register(tikaExtractor, "tikaExtractor");
+
         final DataConfig dataConfig = new DataConfig();
         final Map<String, String> paramMap = new HashMap<>();
         paramMap.put("tenant", tenant);

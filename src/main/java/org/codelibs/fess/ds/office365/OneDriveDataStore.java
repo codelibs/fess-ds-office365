@@ -15,14 +15,10 @@
  */
 package org.codelibs.fess.ds.office365;
 
-import com.microsoft.graph.models.extensions.Drive;
 import com.microsoft.graph.models.extensions.DriveItem;
 import com.microsoft.graph.models.extensions.IGraphServiceClient;
-import com.microsoft.graph.models.extensions.User;
-import com.microsoft.graph.options.QueryOption;
 import com.microsoft.graph.requests.extensions.IDriveItemCollectionPage;
-import com.microsoft.graph.requests.extensions.IGroupCollectionPage;
-import com.microsoft.graph.requests.extensions.IUserCollectionPage;
+import com.microsoft.graph.requests.extensions.IDriveRequestBuilder;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
 import org.codelibs.fess.ds.AbstractDataStore;
@@ -92,67 +88,39 @@ public class OneDriveDataStore extends AbstractDataStore {
 
     protected void storeSharedDocumentsDrive(final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
-        final Drive drive = client.drive().buildRequest().get();
-        logger.debug("Start to store " + drive.name + "'s Drive");
-        getDriveItemsInDrive(client, drive.id).forEach(item -> {
-            processDriveItem(callback, paramMap, scriptMap, defaultDataMap, client, drive.id, item);
+        getDriveItemsInDrive(client.drive()).forEach(item -> {
+            processDriveItem(callback, paramMap, scriptMap, defaultDataMap, client.drive(), item);
         });
-        logger.debug("----------");
     }
 
     protected void storeUsersDrive(final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
-        IUserCollectionPage page = client.users().buildRequest().get();
-        while (true) {
-            page.getCurrentPage().forEach(u -> {
-                final User user = client.users(u.id).buildRequest(Collections.singletonList(new QueryOption("$select", "mySite"))).get();
-                if (user.mySite != null) {
-                    final Drive drive = client.users(u.id).drive().buildRequest().get();
-                    logger.debug("Start to store " + u.displayName + "'s Drive");
-                    getDriveItemsInDrive(client, drive.id).forEach(item -> {
-                        processDriveItem(callback, paramMap, scriptMap, defaultDataMap, client, drive.id, item);
-                    });
-                    logger.debug("----------");
-                }
+        getLicensedUsers(client).forEach(user -> {
+            getDriveItemsInDrive(client.users(user.id).drive()).forEach(item -> {
+                processDriveItem(callback, paramMap, scriptMap, defaultDataMap, client.users(user.id).drive(), item);
             });
-            if (page.getNextPage() == null) {
-                break;
-            }
-            page = page.getNextPage().buildRequest().get();
-        }
+        });
     }
 
     protected void storeGroupsDrive(final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
-        IGroupCollectionPage page =
-                client.groups().buildRequest(Collections.singletonList(new QueryOption("$filter", "groupTypes/any(c:c eq 'Unified')")))
-                        .get();
-        while (true) {
-            page.getCurrentPage().forEach(g -> {
-                final Drive drive = client.groups(g.id).drive().buildRequest().get();
-                logger.debug("Start to store " + g.displayName + "'s Drive");
-                getDriveItemsInDrive(client, drive.id).forEach(item -> {
-                    processDriveItem(callback, paramMap, scriptMap, defaultDataMap, client, drive.id, item);
-                });
-                logger.debug("----------");
+        getOffice365Groups(client).forEach(group -> {
+            getDriveItemsInDrive(client.groups(group.id).drive()).forEach(item -> {
+                processDriveItem(callback, paramMap, scriptMap, defaultDataMap, client.groups(group.id).drive(), item);
             });
-            if (page.getNextPage() == null) {
-                break;
-            }
-            page = page.getNextPage().buildRequest().get();
-        }
+        });
     }
 
     protected void processDriveItem(final IndexUpdateCallback callback, final Map<String, String> paramMap,
-            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IGraphServiceClient client,
-            final String driveId, final DriveItem item) {
+            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IDriveRequestBuilder builder,
+            final DriveItem item) {
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
         final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
         final Map<String, Object> filesMap = new HashMap<>();
 
         filesMap.put(FILES_NAME, item.name);
         filesMap.put(FILES_DESCRIPTION, item.description != null ? item.description : "");
-        filesMap.put(FILES_CONTENTS, getDriveItemContents(client, driveId, item));
+        filesMap.put(FILES_CONTENTS, getDriveItemContents(builder, item));
         filesMap.put(FILES_MIMETYPE, item.file != null ? item.file.mimeType : null);
         filesMap.put(FILES_CREATED, item.createdDateTime.getTime());
         filesMap.put(FILES_LAST_MODIFIED, item.lastModifiedDateTime.getTime());
@@ -173,11 +141,11 @@ public class OneDriveDataStore extends AbstractDataStore {
         }
     }
 
-    protected static String getDriveItemContents(final IGraphServiceClient client, final String driveId, final DriveItem item) {
+    protected static String getDriveItemContents(final IDriveRequestBuilder builder, final DriveItem item) {
         if (item.file != null) {
             final String mimeType = item.file.mimeType;
             if (mimeType.matches("application/vnd\\.openxmlformats-officedocument\\.(.*)") || mimeType.matches("text/.*")) {
-                try (final InputStream in = client.drives(driveId).items(item.id).content().buildRequest().get()) {
+                try (final InputStream in = builder.items(item.id).content().buildRequest().get()) {
                     final TikaExtractor extractor = ComponentUtil.getComponent("tikaExtractor");
                     return extractor.getText(in, null).getContent();
                 } catch (final IOException e) {
@@ -188,30 +156,26 @@ public class OneDriveDataStore extends AbstractDataStore {
         return "";
     }
 
-    protected static List<DriveItem> getDriveItemsInDrive(final IGraphServiceClient client, final String driveId) {
-        return getDriveItemsChildren(client, driveId, null);
+    protected static List<DriveItem> getDriveItemsInDrive(final IDriveRequestBuilder builder) {
+        return getDriveItemChildren(builder, null);
     }
 
-    private static List<DriveItem> getDriveItemsChildren(final IGraphServiceClient client, final String driveId, final DriveItem root) {
+    private static List<DriveItem> getDriveItemChildren(final IDriveRequestBuilder builder, final DriveItem root) {
         final List<DriveItem> items = new ArrayList<>();
         IDriveItemCollectionPage page;
         if (root == null) {
-            page = client.drives(driveId).root().children().buildRequest().get();
+            page = builder.root().children().buildRequest().get();
         } else {
             items.add(root);
             if (root.folder == null) {
                 return items;
             }
-            page = client.drives(driveId).items(root.id).children().buildRequest().get();
+            page = builder.items(root.id).children().buildRequest().get();
         }
-        while (true) {
-            page.getCurrentPage().forEach(i -> {
-                items.addAll(getDriveItemsChildren(client, driveId, i));
-            });
-            if (page.getNextPage() == null) {
-                break;
-            }
+        page.getCurrentPage().forEach(i -> items.addAll(getDriveItemChildren(builder, i)));
+        while (page.getNextPage() != null) {
             page = page.getNextPage().buildRequest().get();
+            page.getCurrentPage().forEach(i -> items.addAll(getDriveItemChildren(builder, i)));
         }
         return items;
     }

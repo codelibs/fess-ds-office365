@@ -15,13 +15,17 @@
  */
 package org.codelibs.fess.ds.office365;
 
+import com.microsoft.graph.models.extensions.Group;
+import com.microsoft.graph.models.extensions.IGraphServiceClient;
+import com.microsoft.graph.models.extensions.User;
 import org.codelibs.fess.util.ComponentUtil;
 import org.dbflute.utflute.lastadi.ContainerTestCase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.codelibs.fess.ds.office365.Office365Helper.getAccessToken;
-import static org.codelibs.fess.ds.office365.Office365Helper.getClient;
+import java.util.List;
+
+import static org.codelibs.fess.ds.office365.Office365Helper.*;
 
 public class Office365HelperTest extends ContainerTestCase {
 
@@ -67,8 +71,43 @@ public class Office365HelperTest extends ContainerTestCase {
     }
 
     private void doGetClient() throws Exception {
-        final String accessToken = getAccessToken(tenant, clientId, clientSecret);
-        getClient(accessToken);
+        getClient(getAccessToken(tenant, clientId, clientSecret));
+    }
+
+    public void testGetUsers() throws Exception {
+        // doGetUsers();
+    }
+
+    private void doGetUsers() throws Exception {
+        final IGraphServiceClient client = getClient(getAccessToken(tenant, clientId, clientSecret));
+        final List<User> users = getUsers(client);
+        final List<User> licensedUsers = getLicensedUsers(client);
+        logger.debug("Licensed Users:");
+        licensedUsers.forEach(user -> {
+            logger.debug(user.id + " " + user.displayName);
+        });
+        logger.debug("Not Licensed Users:");
+        users.stream().filter(u -> licensedUsers.stream().noneMatch(lu -> lu.id.equals(u.id))).forEach(user -> {
+            logger.debug(user.id + " " + user.displayName);
+        });
+    }
+
+    public void testGetGroups() throws Exception {
+        // doGetGroups();
+    }
+
+    private void doGetGroups() throws Exception {
+        final IGraphServiceClient client = getClient(getAccessToken(tenant, clientId, clientSecret));
+        final List<Group> groups = getGroups(client);
+        final List<Group> office365Groups = getOffice365Groups(client);
+        logger.debug("Office365 Groups:");
+        office365Groups.forEach(group -> {
+            logger.debug(group.id + " " + group.displayName);
+        });
+        logger.debug("Not Office365 Groups:");
+        groups.stream().filter(g -> office365Groups.stream().noneMatch(og -> og.id.equals(g.id))).forEach(group -> {
+            logger.debug(group.id + " " + group.displayName);
+        });
     }
 
 }
