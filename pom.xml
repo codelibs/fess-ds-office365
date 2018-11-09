@@ -151,8 +151,20 @@
 								<includes>
 									<include>com.microsoft.graph:microsoft-graph</include>
 									<include>com.microsoft.azure:adal4j</include>
+									<include>com.nimbusds</include>
+									<include>net.minidev</include>
 								</includes>
 							</artifactSet>
+							<filters>
+								<filter>
+									<artifact>com.microsoft.azure:adal4j</artifact>
+									<excludes>
+										<exclude>META-INF/*.SF</exclude>
+										<exclude>META-INF/*.DSA</exclude>
+										<exclude>META-INF/*.RSA</exclude>
+									</excludes>
+								</filter>
+							</filters>
 						</configuration>
 					</execution>
 				</executions>
