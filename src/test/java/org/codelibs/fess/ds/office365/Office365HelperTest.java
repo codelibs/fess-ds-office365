@@ -18,12 +18,14 @@ package org.codelibs.fess.ds.office365;
 import com.microsoft.graph.models.extensions.Group;
 import com.microsoft.graph.models.extensions.IGraphServiceClient;
 import com.microsoft.graph.models.extensions.User;
+import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.util.ComponentUtil;
 import org.dbflute.utflute.lastadi.ContainerTestCase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.codelibs.fess.ds.office365.Office365Helper.*;
 
@@ -108,6 +110,35 @@ public class Office365HelperTest extends ContainerTestCase {
         groups.stream().filter(g -> office365Groups.stream().noneMatch(og -> og.id.equals(g.id))).forEach(group -> {
             logger.debug(group.id + " " + group.displayName);
         });
+    }
+
+    static abstract class TestCallback implements IndexUpdateCallback {
+        private long documentSize = 0;
+        private long executeTime = 0;
+
+        abstract void test(Map<String, String> paramMap, Map<String, Object> dataMap);
+
+        @Override
+        public void store(Map<String, String> paramMap, Map<String, Object> dataMap) {
+            final long startTime = System.currentTimeMillis();
+            test(paramMap, dataMap);
+            executeTime += System.currentTimeMillis() - startTime;
+            documentSize++;
+        }
+
+        @Override
+        public long getDocumentSize() {
+            return documentSize;
+        }
+
+        @Override
+        public long getExecuteTime() {
+            return executeTime;
+        }
+
+        @Override
+        public void commit() {
+        }
     }
 
 }

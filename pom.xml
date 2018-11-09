@@ -149,7 +149,8 @@
 							<createDependencyReducedPom>false</createDependencyReducedPom>
 							<artifactSet>
 								<includes>
-									<include>com.auth0:java-jwt</include>
+									<include>com.microsoft.graph:microsoft-graph</include>
+									<include>com.microsoft.azure:adal4j</include>
 								</includes>
 							</artifactSet>
 						</configuration>
@@ -255,15 +256,15 @@
 			<version>${utflute.version}</version>
 			<scope>test</scope>
 		</dependency>
-        <dependency>
-            <groupId>com.microsoft.graph</groupId>
-            <artifactId>microsoft-graph</artifactId>
-            <version>${microsoft.graph.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.microsoft.azure</groupId>
-            <artifactId>adal4j</artifactId>
-            <version>${adal4j.version}</version>
-        </dependency>
+		<dependency>
+			<groupId>com.microsoft.graph</groupId>
+			<artifactId>microsoft-graph</artifactId>
+			<version>${microsoft.graph.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>com.microsoft.azure</groupId>
+			<artifactId>adal4j</artifactId>
+			<version>${adal4j.version}</version>
+		</dependency>
 	</dependencies>
 </project>

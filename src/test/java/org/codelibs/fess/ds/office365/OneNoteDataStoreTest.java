@@ -81,9 +81,9 @@ public class OneNoteDataStoreTest extends ContainerTestCase {
         scriptMap.put(fessConfig.getIndexFieldLastModified(), "notebooks.last_modified");
         scriptMap.put(fessConfig.getIndexFieldUrl(), "notebooks.web_url");
 
-        dataStore.storeData(dataConfig, new IndexUpdateCallbackImpl() {
+        dataStore.storeData(dataConfig, new TestCallback() {
             @Override
-            public void store(Map<String, String> paramMap, Map<String, Object> dataMap) {
+            public void test(Map<String, String> paramMap, Map<String, Object> dataMap) {
                 logger.debug(dataMap.toString());
             }
         }, paramMap, scriptMap, defaultDataMap);

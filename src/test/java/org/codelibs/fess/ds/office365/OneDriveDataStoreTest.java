@@ -18,7 +18,6 @@ package org.codelibs.fess.ds.office365;
 import com.microsoft.graph.models.extensions.DriveItem;
 import com.microsoft.graph.models.extensions.File;
 import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
-import org.codelibs.fess.ds.callback.IndexUpdateCallbackImpl;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.mylasta.direction.FessConfig;
 import org.codelibs.fess.util.ComponentUtil;
@@ -88,14 +87,12 @@ public class OneDriveDataStoreTest extends ContainerTestCase {
         scriptMap.put(fessConfig.getIndexFieldContentLength(), "files.size");
         scriptMap.put(fessConfig.getIndexFieldUrl(), "files.web_url");
 
-        final IndexUpdateCallbackImpl callback = new IndexUpdateCallbackImpl() {
+        dataStore.storeData(dataConfig, new TestCallback() {
             @Override
-            public void store(Map<String, String> paramMap, Map<String, Object> dataMap) {
+            public void test(Map<String, String> paramMap, Map<String, Object> dataMap) {
                 logger.debug(dataMap.toString());
             }
-        };
-
-        dataStore.storeData(dataConfig, callback, paramMap, scriptMap, defaultDataMap);
+        }, paramMap, scriptMap, defaultDataMap);
     }
 
     public void testProcessDriveItem() throws Exception {
@@ -118,9 +115,9 @@ public class OneDriveDataStoreTest extends ContainerTestCase {
         item.lastModifiedDateTime = Calendar.getInstance();
         item.webUrl = "piyo";
         final CountDownLatch latch = new CountDownLatch(1);
-        dataStore.processDriveItem(new IndexUpdateCallbackImpl() {
+        dataStore.processDriveItem(new TestCallback() {
             @Override
-            public void store(Map<String, String> paramMap, Map<String, Object> dataMap) {
+            public void test(Map<String, String> paramMap, Map<String, Object> dataMap) {
                 assertEquals(item.name, dataMap.get("name"));
                 assertEquals(item.description, dataMap.get("description"));
                 assertEquals("", dataMap.get("contents"));
