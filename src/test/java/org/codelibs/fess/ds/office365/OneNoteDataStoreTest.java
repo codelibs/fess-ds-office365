@@ -16,7 +16,6 @@
 package org.codelibs.fess.ds.office365;
 
 import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
-import org.codelibs.fess.ds.callback.IndexUpdateCallbackImpl;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.mylasta.direction.FessConfig;
 import org.codelibs.fess.util.ComponentUtil;
@@ -80,6 +79,7 @@ public class OneNoteDataStoreTest extends ContainerTestCase {
         scriptMap.put(fessConfig.getIndexFieldCreated(), "notebooks.created");
         scriptMap.put(fessConfig.getIndexFieldLastModified(), "notebooks.last_modified");
         scriptMap.put(fessConfig.getIndexFieldUrl(), "notebooks.web_url");
+        scriptMap.put(fessConfig.getIndexFieldRole(), "notebooks.roles");
 
         dataStore.storeData(dataConfig, new TestCallback() {
             @Override

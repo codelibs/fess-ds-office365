@@ -15,6 +15,7 @@
  */
 package org.codelibs.fess.ds.office365;
 
+import com.microsoft.graph.http.GraphServiceException;
 import com.microsoft.graph.models.extensions.DriveItem;
 import com.microsoft.graph.models.extensions.IGraphServiceClient;
 import com.microsoft.graph.requests.extensions.IDriveItemCollectionPage;
@@ -48,6 +49,7 @@ public class OneDriveDataStore extends AbstractDataStore {
     private static final String FILES_LAST_MODIFIED = "last_modified";
     private static final String FILES_SIZE = "size";
     private static final String FILES_WEB_URL = "web_url";
+    private static final String FILES_ROLES = "roles";
 
     private static final Logger logger = LoggerFactory.getLogger(OneDriveDataStore.class);
 
@@ -89,31 +91,37 @@ public class OneDriveDataStore extends AbstractDataStore {
     protected void storeSharedDocumentsDrive(final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
         getDriveItemsInDrive(client.drive()).forEach(item -> {
-            processDriveItem(callback, paramMap, scriptMap, defaultDataMap, client.drive(), item);
+            processDriveItem(callback, paramMap, scriptMap, defaultDataMap, client.drive(), item, Collections.singletonList("Rguest"));
         });
     }
 
     protected void storeUsersDrive(final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
         getLicensedUsers(client).forEach(user -> {
-            getDriveItemsInDrive(client.users(user.id).drive()).forEach(item -> {
-                processDriveItem(callback, paramMap, scriptMap, defaultDataMap, client.users(user.id).drive(), item);
-            });
+            final List<String> roles = getUserRoles(user);
+            try {
+                getDriveItemsInDrive(client.users(user.id).drive()).forEach(item -> {
+                    processDriveItem(callback, paramMap, scriptMap, defaultDataMap, client.users(user.id).drive(), item, roles);
+                });
+            } catch (final GraphServiceException e) {
+                logger.warn("Failed to store " + user.displayName + "'s Drive", e);
+            }
         });
     }
 
     protected void storeGroupsDrive(final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
         getOffice365Groups(client).forEach(group -> {
+            final List<String> roles = getGroupRoles(group);
             getDriveItemsInDrive(client.groups(group.id).drive()).forEach(item -> {
-                processDriveItem(callback, paramMap, scriptMap, defaultDataMap, client.groups(group.id).drive(), item);
+                processDriveItem(callback, paramMap, scriptMap, defaultDataMap, client.groups(group.id).drive(), item, roles);
             });
         });
     }
 
     protected void processDriveItem(final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IDriveRequestBuilder builder,
-            final DriveItem item) {
+            final DriveItem item, final List<String> roles) {
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
         final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
         final Map<String, Object> filesMap = new HashMap<>();
@@ -126,6 +134,7 @@ public class OneDriveDataStore extends AbstractDataStore {
         filesMap.put(FILES_LAST_MODIFIED, item.lastModifiedDateTime.getTime());
         filesMap.put(FILES_SIZE, item.size);
         filesMap.put(FILES_WEB_URL, item.webUrl);
+        filesMap.put(FILES_ROLES, roles);
         resultMap.put(FILES, filesMap);
 
         try {

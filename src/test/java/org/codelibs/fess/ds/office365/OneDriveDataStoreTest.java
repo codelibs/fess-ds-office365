@@ -26,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Calendar;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -86,6 +87,7 @@ public class OneDriveDataStoreTest extends ContainerTestCase {
         scriptMap.put(fessConfig.getIndexFieldLastModified(), "files.last_modified");
         scriptMap.put(fessConfig.getIndexFieldContentLength(), "files.size");
         scriptMap.put(fessConfig.getIndexFieldUrl(), "files.web_url");
+        scriptMap.put(fessConfig.getIndexFieldRole(), "files.roles");
 
         dataStore.storeData(dataConfig, new TestCallback() {
             @Override
@@ -127,7 +129,7 @@ public class OneDriveDataStoreTest extends ContainerTestCase {
                 assertEquals(item.webUrl, dataMap.get("web_url"));
                 latch.countDown();
             }
-        }, paramMap, scriptMap, defaultDataMap, null, item);
+        }, paramMap, scriptMap, defaultDataMap, null, item, Collections.emptyList());
         latch.await();
     }
 

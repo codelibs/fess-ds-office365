@@ -15,6 +15,7 @@
  */
 package org.codelibs.fess.ds.office365;
 
+import com.microsoft.graph.http.GraphServiceException;
 import com.microsoft.graph.models.extensions.*;
 import com.microsoft.graph.requests.extensions.*;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
@@ -45,6 +46,7 @@ public class OneNoteDataStore extends AbstractDataStore {
     private static final String NOTEBOOKS_CREATED = "created";
     private static final String NOTEBOOKS_LAST_MODIFIED = "last_modified";
     private static final String NOTEBOOKS_WEB_URL = "web_url";
+    private static final String NOTEBOOKS_ROLES = "roles";
 
     private static final Logger logger = LoggerFactory.getLogger(OneNoteDataStore.class);
 
@@ -87,31 +89,38 @@ public class OneNoteDataStore extends AbstractDataStore {
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
         final Site root = client.sites("root").buildRequest().get();
         getNotebooks(client.sites(root.id).onenote()).forEach(notebook -> {
-            processNotebook(callback, paramMap, scriptMap, defaultDataMap, client.sites(root.id).onenote(), notebook);
+            processNotebook(callback, paramMap, scriptMap, defaultDataMap, client.sites(root.id).onenote(), notebook,
+                    Collections.singletonList("Rguest"));
         });
     }
 
     protected void storeUsersNotes(final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
         getLicensedUsers(client).forEach(user -> {
-            getNotebooks(client.users(user.id).onenote()).forEach(notebook -> {
-                processNotebook(callback, paramMap, scriptMap, defaultDataMap, client.users(user.id).onenote(), notebook);
-            });
+            final List<String> roles = getUserRoles(user);
+            try {
+                getNotebooks(client.users(user.id).onenote()).forEach(notebook -> {
+                    processNotebook(callback, paramMap, scriptMap, defaultDataMap, client.users(user.id).onenote(), notebook, roles);
+                });
+            } catch (final GraphServiceException e) {
+                logger.warn("Failed to store " + user.displayName + "'s Notebooks", e);
+            }
         });
     }
 
     protected void storeGroupsNotes(final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
         getOffice365Groups(client).forEach(group -> {
+            final List<String> roles = getGroupRoles(group);
             getNotebooks(client.groups(group.id).onenote()).forEach(notebook -> {
-                processNotebook(callback, paramMap, scriptMap, defaultDataMap, client.groups(group.id).onenote(), notebook);
+                processNotebook(callback, paramMap, scriptMap, defaultDataMap, client.groups(group.id).onenote(), notebook, roles);
             });
         });
     }
 
     protected void processNotebook(final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IOnenoteRequestBuilder builder,
-            final Notebook notebook) {
+            final Notebook notebook, final List<String> roles) {
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
         final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
         final Map<String, Object> notebooksMap = new HashMap<>();
@@ -121,6 +130,7 @@ public class OneNoteDataStore extends AbstractDataStore {
         notebooksMap.put(NOTEBOOKS_CREATED, notebook.createdDateTime.getTime());
         notebooksMap.put(NOTEBOOKS_LAST_MODIFIED, notebook.lastModifiedDateTime.getTime());
         notebooksMap.put(NOTEBOOKS_WEB_URL, notebook.links.oneNoteWebUrl.href);
+        notebooksMap.put(NOTEBOOKS_ROLES, roles);
         resultMap.put(NOTEBOOKS, notebooksMap);
 
         try {

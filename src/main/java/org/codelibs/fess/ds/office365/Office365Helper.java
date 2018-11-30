@@ -26,6 +26,9 @@ import com.microsoft.graph.options.QueryOption;
 import com.microsoft.graph.requests.extensions.GraphServiceClient;
 import com.microsoft.graph.requests.extensions.IGroupCollectionPage;
 import com.microsoft.graph.requests.extensions.IUserCollectionPage;
+import org.codelibs.fess.helper.SystemHelper;
+import org.codelibs.fess.util.ComponentUtil;
+import org.lastaflute.di.core.exception.ComponentNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -108,6 +111,15 @@ public class Office365Helper {
         return user.assignedLicenses.stream().anyMatch(license -> Objects.nonNull(license.skuId));
     }
 
+    public static List<String> getUserRoles(final User user) {
+        try {
+            final SystemHelper systemHelper = ComponentUtil.getSystemHelper();
+            return Collections.singletonList(systemHelper.getSearchRoleByUser(user.userPrincipalName));
+        } catch (final ComponentNotFoundException e) {
+            return Collections.singletonList(user.userPrincipalName);
+        }
+    }
+
     public static List<Group> getGroups(final IGraphServiceClient client) {
         return getGroups(client, new ArrayList<>());
     }
@@ -124,6 +136,15 @@ public class Office365Helper {
 
     public static List<Group> getOffice365Groups(final IGraphServiceClient client) {
         return getGroups(client, Collections.singletonList(new QueryOption("$filter", "groupTypes/any(c:c eq 'Unified')")));
+    }
+
+    public static List<String> getGroupRoles(final Group group) {
+        try {
+            final SystemHelper systemHelper = ComponentUtil.getSystemHelper();
+            return Collections.singletonList(systemHelper.getSearchRoleByGroup(group.displayName));
+        } catch (final ComponentNotFoundException e) {
+            return Collections.singletonList(group.displayName);
+        }
     }
 
 }
