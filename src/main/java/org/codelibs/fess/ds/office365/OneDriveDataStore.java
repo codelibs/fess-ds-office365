@@ -91,7 +91,7 @@ public class OneDriveDataStore extends AbstractDataStore {
     protected void storeSharedDocumentsDrive(final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
         getDriveItemsInDrive(client.drive()).forEach(item -> {
-            processDriveItem(callback, paramMap, scriptMap, defaultDataMap, client.drive(), item, Collections.singletonList("Rguest"));
+            processDriveItem(callback, paramMap, scriptMap, defaultDataMap, client.drive(), item, null);
         });
     }
 

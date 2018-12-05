@@ -89,8 +89,7 @@ public class OneNoteDataStore extends AbstractDataStore {
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
         final Site root = client.sites("root").buildRequest().get();
         getNotebooks(client.sites(root.id).onenote()).forEach(notebook -> {
-            processNotebook(callback, paramMap, scriptMap, defaultDataMap, client.sites(root.id).onenote(), notebook,
-                    Collections.singletonList("Rguest"));
+            processNotebook(callback, paramMap, scriptMap, defaultDataMap, client.sites(root.id).onenote(), notebook, null);
         });
     }
 
