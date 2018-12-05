@@ -104,7 +104,8 @@ public class OneDriveDataStore extends AbstractDataStore {
                     processDriveItem(callback, paramMap, scriptMap, defaultDataMap, client.users(user.id).drive(), item, roles);
                 });
             } catch (final GraphServiceException e) {
-                logger.warn("Failed to store " + user.displayName + "'s Drive", e);
+                logger.warn("Failed to store " + user.displayName + "'s Drive: " + e.getMessage());
+                logger.debug("Details:", e);
             }
         });
     }

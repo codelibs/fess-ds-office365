@@ -103,7 +103,8 @@ public class OneNoteDataStore extends AbstractDataStore {
                     processNotebook(callback, paramMap, scriptMap, defaultDataMap, client.users(user.id).onenote(), notebook, roles);
                 });
             } catch (final GraphServiceException e) {
-                logger.warn("Failed to store " + user.displayName + "'s Notebooks", e);
+                logger.warn("Failed to store " + user.displayName + "'s Notebooks: " + e.getMessage());
+                logger.debug("Details:", e);
             }
         });
     }
