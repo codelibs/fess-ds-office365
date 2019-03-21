@@ -15,7 +15,11 @@
  */
 package org.codelibs.fess.ds.office365;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
+import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.mylasta.direction.FessConfig;
 import org.codelibs.fess.util.ComponentUtil;
@@ -23,15 +27,15 @@ import org.dbflute.utflute.lastadi.ContainerTestCase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.HashMap;
-import java.util.Map;
-
-import static org.codelibs.fess.ds.office365.Office365HelperTest.*;
-
 public class OneNoteDataStoreTest extends ContainerTestCase {
 
     private static final Logger logger = LoggerFactory.getLogger(OneNoteDataStoreTest.class);
 
+    // for test
+    public static final String tenant = "";
+    public static final String clientId = "";
+    public static final String clientSecret = "";
+    
     private OneNoteDataStore dataStore;
 
     @Override
@@ -89,4 +93,32 @@ public class OneNoteDataStoreTest extends ContainerTestCase {
         }, paramMap, scriptMap, defaultDataMap);
     }
 
+    static abstract class TestCallback implements IndexUpdateCallback {
+        private long documentSize = 0;
+        private long executeTime = 0;
+
+        abstract void test(Map<String, String> paramMap, Map<String, Object> dataMap);
+
+        @Override
+        public void store(Map<String, String> paramMap, Map<String, Object> dataMap) {
+            final long startTime = System.currentTimeMillis();
+            test(paramMap, dataMap);
+            executeTime += System.currentTimeMillis() - startTime;
+            documentSize++;
+        }
+
+        @Override
+        public long getDocumentSize() {
+            return documentSize;
+        }
+
+        @Override
+        public long getExecuteTime() {
+            return executeTime;
+        }
+
+        @Override
+        public void commit() {
+        }
+    }
 }

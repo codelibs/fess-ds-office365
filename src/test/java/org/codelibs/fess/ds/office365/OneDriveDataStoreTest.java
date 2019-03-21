@@ -18,6 +18,7 @@ package org.codelibs.fess.ds.office365;
 import com.microsoft.graph.models.extensions.DriveItem;
 import com.microsoft.graph.models.extensions.File;
 import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
+import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.mylasta.direction.FessConfig;
 import org.codelibs.fess.util.ComponentUtil;
@@ -31,13 +32,17 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 
-import static org.codelibs.fess.ds.office365.Office365HelperTest.*;
-import static org.codelibs.fess.ds.office365.OneDriveDataStore.getDriveItemContents;
+ 
 
 public class OneDriveDataStoreTest extends ContainerTestCase {
 
     private static final Logger logger = LoggerFactory.getLogger(OneDriveDataStoreTest.class);
-
+    
+    // for test
+    public static final String tenant = "";
+    public static final String clientId = "";
+    public static final String clientSecret = "";
+    
     private OneDriveDataStore dataStore;
 
     @Override
@@ -135,7 +140,35 @@ public class OneDriveDataStoreTest extends ContainerTestCase {
 
     public void testGetDriveItemContents() {
         final DriveItem item = new DriveItem();
-        assertEquals("", getDriveItemContents(null, item));
+        assertEquals("",dataStore. getDriveItemContents(null, item));
     }
 
+    static abstract class TestCallback implements IndexUpdateCallback {
+        private long documentSize = 0;
+        private long executeTime = 0;
+
+        abstract void test(Map<String, String> paramMap, Map<String, Object> dataMap);
+
+        @Override
+        public void store(Map<String, String> paramMap, Map<String, Object> dataMap) {
+            final long startTime = System.currentTimeMillis();
+            test(paramMap, dataMap);
+            executeTime += System.currentTimeMillis() - startTime;
+            documentSize++;
+        }
+
+        @Override
+        public long getDocumentSize() {
+            return documentSize;
+        }
+
+        @Override
+        public long getExecuteTime() {
+            return executeTime;
+        }
+
+        @Override
+        public void commit() {
+        }
+    }
 }

@@ -15,44 +15,52 @@
  */
 package org.codelibs.fess.ds.office365;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Stream;
+
+import org.codelibs.core.lang.StringUtil;
+import org.codelibs.fess.crawler.exception.CrawlingAccessException;
+import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
+import org.codelibs.fess.ds.callback.IndexUpdateCallback;
+import org.codelibs.fess.es.config.exentity.DataConfig;
+import org.codelibs.fess.exception.DataStoreException;
+import org.codelibs.fess.util.ComponentUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.microsoft.graph.http.GraphServiceException;
 import com.microsoft.graph.models.extensions.DriveItem;
 import com.microsoft.graph.models.extensions.IGraphServiceClient;
 import com.microsoft.graph.requests.extensions.IDriveItemCollectionPage;
 import com.microsoft.graph.requests.extensions.IDriveRequestBuilder;
-import org.codelibs.fess.crawler.exception.CrawlingAccessException;
-import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
-import org.codelibs.fess.ds.AbstractDataStore;
-import org.codelibs.fess.ds.callback.IndexUpdateCallback;
-import org.codelibs.fess.es.config.exentity.DataConfig;
-import org.codelibs.fess.util.ComponentUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.MalformedURLException;
-import java.util.*;
-import java.util.concurrent.ExecutionException;
-
-import static org.codelibs.fess.ds.office365.Office365Helper.*;
-
-public class OneDriveDataStore extends AbstractDataStore {
+public class OneDriveDataStore extends Office365DataStore {
 
     // scripts
-    private static final String FILES = "files";
-    private static final String FILES_NAME = "name";
-    private static final String FILES_DESCRIPTION = "description";
-    private static final String FILES_CONTENTS = "contents";
-    private static final String FILES_MIMETYPE = "mimetype";
-    private static final String FILES_CREATED = "created";
-    private static final String FILES_LAST_MODIFIED = "last_modified";
-    private static final String FILES_SIZE = "size";
-    private static final String FILES_WEB_URL = "web_url";
-    private static final String FILES_ROLES = "roles";
+    protected static final String FILES = "files";
+    protected static final String FILES_NAME = "name";
+    protected static final String FILES_DESCRIPTION = "description";
+    protected static final String FILES_CONTENTS = "contents";
+    protected static final String FILES_MIMETYPE = "mimetype";
+    protected static final String FILES_CREATED = "created";
+    protected static final String FILES_LAST_MODIFIED = "last_modified";
+    protected static final String FILES_SIZE = "size";
+    protected static final String FILES_WEB_URL = "web_url";
+    protected static final String FILES_ROLES = "roles";
 
     private static final Logger logger = LoggerFactory.getLogger(OneDriveDataStore.class);
 
+    protected String[] supportedMimeTypes = new String[] { "application/vnd\\.openxmlformats-officedocument\\.(.*)", "text/.*" };
+
+    protected String extractorName = "tikaExtractor";
+
+    @Override
     protected String getName() {
         return "OneDrive";
     }
@@ -61,31 +69,27 @@ public class OneDriveDataStore extends AbstractDataStore {
     protected void storeData(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap) {
 
-        final String tenant = paramMap.getOrDefault(TENANT_PARAM, "");
-        final String clientId = paramMap.getOrDefault(CLIENT_ID_PARAM, "");
-        final String clientSecret = paramMap.getOrDefault(CLIENT_SECRET_PARAM, "");
+        final String tenant = getTenant(paramMap);
+        final String clientId = getClientId(paramMap);
+        final String clientSecret = getClientSecret(paramMap);
 
         if (tenant.isEmpty() || clientId.isEmpty() || clientSecret.isEmpty()) {
-            logger.warn("parameter '" + //
+            throw new DataStoreException("parameter '" + //
                     TENANT_PARAM + "', '" + //
                     CLIENT_ID_PARAM + "', '" + //
                     CLIENT_SECRET_PARAM + "' is required");
-            return;
         }
 
-        final String accessToken;
+        final String accessToken = getAccessToken(tenant, clientId, clientSecret);
+
+        final IGraphServiceClient client = getClient(accessToken);
         try {
-            accessToken = getAccessToken(tenant, clientId, clientSecret);
-        } catch (final MalformedURLException | ExecutionException | InterruptedException e) {
-            logger.warn("failed to get access token.", e);
-            return;
+            storeSharedDocumentsDrive(callback, paramMap, scriptMap, defaultDataMap, client);
+            storeUsersDrive(callback, paramMap, scriptMap, defaultDataMap, client);
+            storeGroupsDrive(callback, paramMap, scriptMap, defaultDataMap, client);
+        } finally {
+            client.shutdown();
         }
-
-        final IGraphServiceClient client = getClient(accessToken, logger);
-        storeSharedDocumentsDrive(callback, paramMap, scriptMap, defaultDataMap, client);
-        storeUsersDrive(callback, paramMap, scriptMap, defaultDataMap, client);
-        storeGroupsDrive(callback, paramMap, scriptMap, defaultDataMap, client);
-
     }
 
     protected void storeSharedDocumentsDrive(final IndexUpdateCallback callback, final Map<String, String> paramMap,
@@ -104,8 +108,7 @@ public class OneDriveDataStore extends AbstractDataStore {
                     processDriveItem(callback, paramMap, scriptMap, defaultDataMap, client.users(user.id).drive(), item, roles);
                 });
             } catch (final GraphServiceException e) {
-                logger.warn("Failed to store " + user.displayName + "'s Drive: " + e.getMessage());
-                logger.debug("Details:", e);
+                logger.warn("Failed to store " + user.displayName + "'s Drive, ", e);
             }
         });
     }
@@ -128,7 +131,7 @@ public class OneDriveDataStore extends AbstractDataStore {
         final Map<String, Object> filesMap = new HashMap<>();
 
         filesMap.put(FILES_NAME, item.name);
-        filesMap.put(FILES_DESCRIPTION, item.description != null ? item.description : "");
+        filesMap.put(FILES_DESCRIPTION, item.description != null ? item.description : StringUtil.EMPTY);
         filesMap.put(FILES_CONTENTS, getDriveItemContents(builder, item));
         filesMap.put(FILES_MIMETYPE, item.file != null ? item.file.mimeType : null);
         filesMap.put(FILES_CREATED, item.createdDateTime.getTime());
@@ -137,6 +140,9 @@ public class OneDriveDataStore extends AbstractDataStore {
         filesMap.put(FILES_WEB_URL, item.webUrl);
         filesMap.put(FILES_ROLES, roles);
         resultMap.put(FILES, filesMap);
+        if (logger.isDebugEnabled()) {
+            logger.debug("filesMap: {}", filesMap);
+        }
 
         try {
             for (final Map.Entry<String, String> entry : scriptMap.entrySet()) {
@@ -145,32 +151,39 @@ public class OneDriveDataStore extends AbstractDataStore {
                     dataMap.put(entry.getKey(), convertValue);
                 }
             }
+            if (logger.isDebugEnabled()) {
+                logger.debug("dataMap: {}", dataMap);
+            }
+
             callback.store(paramMap, dataMap);
         } catch (final CrawlingAccessException e) {
             logger.warn("Crawling Access Exception at : " + dataMap, e);
         }
     }
 
-    protected static String getDriveItemContents(final IDriveRequestBuilder builder, final DriveItem item) {
+    protected String getDriveItemContents(final IDriveRequestBuilder builder, final DriveItem item) {
         if (item.file != null) {
-            final String mimeType = item.file.mimeType;
-            if (mimeType.matches("application/vnd\\.openxmlformats-officedocument\\.(.*)") || mimeType.matches("text/.*")) {
+            if (isSupportedMimeType(item.file.mimeType)) {
                 try (final InputStream in = builder.items(item.id).content().buildRequest().get()) {
-                    final TikaExtractor extractor = ComponentUtil.getComponent("tikaExtractor");
+                    final TikaExtractor extractor = ComponentUtil.getComponent(extractorName);
                     return extractor.getText(in, null).getContent();
                 } catch (final IOException e) {
                     logger.warn("Failed to get contents of DriveItem: " + item.name, e);
                 }
             }
         }
-        return "";
+        return StringUtil.EMPTY;
     }
 
-    protected static List<DriveItem> getDriveItemsInDrive(final IDriveRequestBuilder builder) {
+    protected boolean isSupportedMimeType(final String mimeType) {
+        return Stream.of(supportedMimeTypes).anyMatch(s -> mimeType.matches(s));
+    }
+
+    protected List<DriveItem> getDriveItemsInDrive(final IDriveRequestBuilder builder) {
         return getDriveItemChildren(builder, null);
     }
 
-    private static List<DriveItem> getDriveItemChildren(final IDriveRequestBuilder builder, final DriveItem root) {
+    protected List<DriveItem> getDriveItemChildren(final IDriveRequestBuilder builder, final DriveItem root) {
         final List<DriveItem> items = new ArrayList<>();
         IDriveItemCollectionPage page;
         if (root == null) {
@@ -188,6 +201,14 @@ public class OneDriveDataStore extends AbstractDataStore {
             page.getCurrentPage().forEach(i -> items.addAll(getDriveItemChildren(builder, i)));
         }
         return items;
+    }
+
+    public void setSupportedMimeTypes(String[] supportedMimeTypes) {
+        this.supportedMimeTypes = supportedMimeTypes;
+    }
+
+    public void setExtractorName(String extractorName) {
+        this.extractorName = extractorName;
     }
 
 }

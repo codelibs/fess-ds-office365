@@ -15,41 +15,52 @@
  */
 package org.codelibs.fess.ds.office365;
 
-import com.microsoft.graph.http.GraphServiceException;
-import com.microsoft.graph.models.extensions.*;
-import com.microsoft.graph.requests.extensions.*;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
-import org.codelibs.fess.ds.AbstractDataStore;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.es.config.exentity.DataConfig;
+import org.codelibs.fess.exception.DataStoreException;
 import org.codelibs.fess.util.ComponentUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.MalformedURLException;
-import java.util.*;
-import java.util.List;
-import java.util.concurrent.ExecutionException;
-import java.util.stream.Collectors;
+import com.microsoft.graph.http.GraphServiceException;
+import com.microsoft.graph.models.extensions.IGraphServiceClient;
+import com.microsoft.graph.models.extensions.Notebook;
+import com.microsoft.graph.models.extensions.OnenotePage;
+import com.microsoft.graph.models.extensions.OnenoteSection;
+import com.microsoft.graph.models.extensions.Site;
+import com.microsoft.graph.requests.extensions.INotebookCollectionPage;
+import com.microsoft.graph.requests.extensions.INotebookRequestBuilder;
+import com.microsoft.graph.requests.extensions.IOnenotePageCollectionPage;
+import com.microsoft.graph.requests.extensions.IOnenoteRequestBuilder;
+import com.microsoft.graph.requests.extensions.IOnenoteSectionCollectionPage;
+import com.microsoft.graph.requests.extensions.IOnenoteSectionRequestBuilder;
 
-import static org.codelibs.fess.ds.office365.Office365Helper.*;
-
-public class OneNoteDataStore extends AbstractDataStore {
+public class OneNoteDataStore extends Office365DataStore {
 
     // scripts
-    private static final String NOTEBOOKS = "notebooks";
-    private static final String NOTEBOOKS_NAME = "name";
-    private static final String NOTEBOOKS_CONTENTS = "contents";
-    private static final String NOTEBOOKS_CREATED = "created";
-    private static final String NOTEBOOKS_LAST_MODIFIED = "last_modified";
-    private static final String NOTEBOOKS_WEB_URL = "web_url";
-    private static final String NOTEBOOKS_ROLES = "roles";
+    protected static final String NOTEBOOKS = "notebooks";
+    protected static final String NOTEBOOKS_NAME = "name";
+    protected static final String NOTEBOOKS_CONTENTS = "contents";
+    protected static final String NOTEBOOKS_CREATED = "created";
+    protected static final String NOTEBOOKS_LAST_MODIFIED = "last_modified";
+    protected static final String NOTEBOOKS_WEB_URL = "web_url";
+    protected static final String NOTEBOOKS_ROLES = "roles";
 
     private static final Logger logger = LoggerFactory.getLogger(OneNoteDataStore.class);
 
+    @Override
     protected String getName() {
         return "OneNote";
     }
@@ -58,31 +69,27 @@ public class OneNoteDataStore extends AbstractDataStore {
     protected void storeData(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap) {
 
-        final String tenant = paramMap.getOrDefault(TENANT_PARAM, "");
-        final String clientId = paramMap.getOrDefault(CLIENT_ID_PARAM, "");
-        final String clientSecret = paramMap.getOrDefault(CLIENT_SECRET_PARAM, "");
+        final String tenant = getTenant(paramMap);
+        final String clientId = getClientId(paramMap);
+        final String clientSecret = getClientSecret(paramMap);
 
         if (tenant.isEmpty() || clientId.isEmpty() || clientSecret.isEmpty()) {
-            logger.warn("parameter '" + //
+            throw new DataStoreException("parameter '" + //
                     TENANT_PARAM + "', '" + //
                     CLIENT_ID_PARAM + "', '" + //
                     CLIENT_SECRET_PARAM + "' is required");
-            return;
         }
 
-        final String accessToken;
-        try {
-            accessToken = getAccessToken(tenant, clientId, clientSecret);
-        } catch (final MalformedURLException | ExecutionException | InterruptedException e) {
-            logger.warn("failed to get access token.", e);
-            return;
-        }
+        final String accessToken = getAccessToken(tenant, clientId, clientSecret);
 
         final IGraphServiceClient client = getClient(accessToken);
-        storeSiteNotes(callback, paramMap, scriptMap, defaultDataMap, client);
-        storeUsersNotes(callback, paramMap, scriptMap, defaultDataMap, client);
-        storeGroupsNotes(callback, paramMap, scriptMap, defaultDataMap, client);
-
+        try {
+            storeSiteNotes(callback, paramMap, scriptMap, defaultDataMap, client);
+            storeUsersNotes(callback, paramMap, scriptMap, defaultDataMap, client);
+            storeGroupsNotes(callback, paramMap, scriptMap, defaultDataMap, client);
+        } finally {
+            client.shutdown();
+        }
     }
 
     protected void storeSiteNotes(final IndexUpdateCallback callback, final Map<String, String> paramMap,
@@ -102,8 +109,7 @@ public class OneNoteDataStore extends AbstractDataStore {
                     processNotebook(callback, paramMap, scriptMap, defaultDataMap, client.users(user.id).onenote(), notebook, roles);
                 });
             } catch (final GraphServiceException e) {
-                logger.warn("Failed to store " + user.displayName + "'s Notebooks: " + e.getMessage());
-                logger.debug("Details:", e);
+                logger.warn("Failed to store " + user.displayName + "'s Notebooks.", e);
             }
         });
     }
@@ -132,6 +138,9 @@ public class OneNoteDataStore extends AbstractDataStore {
         notebooksMap.put(NOTEBOOKS_WEB_URL, notebook.links.oneNoteWebUrl.href);
         notebooksMap.put(NOTEBOOKS_ROLES, roles);
         resultMap.put(NOTEBOOKS, notebooksMap);
+        if (logger.isDebugEnabled()) {
+            logger.debug("notebooksMap: {}", notebooksMap);
+        }
 
         try {
             for (final Map.Entry<String, String> entry : scriptMap.entrySet()) {
@@ -140,13 +149,16 @@ public class OneNoteDataStore extends AbstractDataStore {
                     dataMap.put(entry.getKey(), convertValue);
                 }
             }
+            if (logger.isDebugEnabled()) {
+                logger.debug("dataMap: {}", dataMap);
+            }
             callback.store(paramMap, dataMap);
         } catch (final CrawlingAccessException e) {
             logger.warn("Crawling Access Exception at : " + dataMap, e);
         }
     }
 
-    protected static List<Notebook> getNotebooks(final IOnenoteRequestBuilder builder) {
+    protected List<Notebook> getNotebooks(final IOnenoteRequestBuilder builder) {
         INotebookCollectionPage page = builder.notebooks().buildRequest().get();
         final List<Notebook> notebooks = new ArrayList<>(page.getCurrentPage());
         while (page.getNextPage() != null) {
@@ -156,7 +168,7 @@ public class OneNoteDataStore extends AbstractDataStore {
         return notebooks;
     }
 
-    protected static List<OnenoteSection> getSections(final INotebookRequestBuilder builder) {
+    protected List<OnenoteSection> getSections(final INotebookRequestBuilder builder) {
         IOnenoteSectionCollectionPage page = builder.sections().buildRequest().get();
         final List<OnenoteSection> sections = new ArrayList<>(page.getCurrentPage());
         while (page.getNextPage() != null) {
@@ -166,7 +178,7 @@ public class OneNoteDataStore extends AbstractDataStore {
         return sections;
     }
 
-    protected static List<OnenotePage> getPages(final IOnenoteSectionRequestBuilder builder) {
+    protected List<OnenotePage> getPages(final IOnenoteSectionRequestBuilder builder) {
         IOnenotePageCollectionPage page = builder.pages().buildRequest().get();
         final List<OnenotePage> pages = new ArrayList<>(page.getCurrentPage());
         while (page.getNextPage() != null) {
@@ -176,13 +188,13 @@ public class OneNoteDataStore extends AbstractDataStore {
         return pages;
     }
 
-    protected static String getNotebookContents(final IOnenoteRequestBuilder builder, final Notebook notebook) {
+    protected String getNotebookContents(final IOnenoteRequestBuilder builder, final Notebook notebook) {
         final List<OnenoteSection> sections = getSections(builder.notebooks(notebook.id));
         Collections.reverse(sections);
         return sections.stream().map(section -> getSectionContents(builder, section)).collect(Collectors.joining("\n"));
     }
 
-    protected static String getSectionContents(final IOnenoteRequestBuilder builder, final OnenoteSection section) {
+    protected String getSectionContents(final IOnenoteRequestBuilder builder, final OnenoteSection section) {
         final StringBuilder sb = new StringBuilder();
         sb.append(section.displayName).append("\n");
         final List<OnenotePage> pages = getPages(builder.sections(section.id));
@@ -191,7 +203,7 @@ public class OneNoteDataStore extends AbstractDataStore {
         return sb.toString();
     }
 
-    protected static String getPageContents(final IOnenoteRequestBuilder builder, final OnenotePage page) {
+    protected String getPageContents(final IOnenoteRequestBuilder builder, final OnenotePage page) {
         final StringBuilder sb = new StringBuilder();
         sb.append(page.title).append("\n");
         try (final InputStream in = builder.pages(page.id).content().buildRequest().get()) {
