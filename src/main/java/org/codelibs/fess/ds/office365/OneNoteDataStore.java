@@ -53,6 +53,7 @@ public class OneNoteDataStore extends Office365DataStore {
     protected static final String NOTEBOOKS = "notebooks";
     protected static final String NOTEBOOKS_NAME = "name";
     protected static final String NOTEBOOKS_CONTENTS = "contents";
+    protected static final String NOTEBOOKS_SIZE = "size";
     protected static final String NOTEBOOKS_CREATED = "created";
     protected static final String NOTEBOOKS_LAST_MODIFIED = "last_modified";
     protected static final String NOTEBOOKS_WEB_URL = "web_url";
@@ -131,8 +132,11 @@ public class OneNoteDataStore extends Office365DataStore {
         final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
         final Map<String, Object> notebooksMap = new HashMap<>();
 
+        final String contents = getNotebookContents(builder, notebook);
+        final long size = contents != null ? contents.length() : 0L;
         notebooksMap.put(NOTEBOOKS_NAME, notebook.displayName);
-        notebooksMap.put(NOTEBOOKS_CONTENTS, getNotebookContents(builder, notebook));
+        notebooksMap.put(NOTEBOOKS_CONTENTS, contents);
+        notebooksMap.put(NOTEBOOKS_SIZE, size);
         notebooksMap.put(NOTEBOOKS_CREATED, notebook.createdDateTime.getTime());
         notebooksMap.put(NOTEBOOKS_LAST_MODIFIED, notebook.lastModifiedDateTime.getTime());
         notebooksMap.put(NOTEBOOKS_WEB_URL, notebook.links.oneNoteWebUrl.href);

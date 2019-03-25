@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 import org.codelibs.core.lang.StringUtil;
+import org.codelibs.fess.Constants;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
@@ -42,12 +43,15 @@ import com.microsoft.graph.requests.extensions.IDriveRequestBuilder;
 
 public class OneDriveDataStore extends Office365DataStore {
 
+    protected static final String IGNORE_FOLDER = "ignore_folder";
+
     // scripts
     protected static final String FILES = "files";
     protected static final String FILES_NAME = "name";
     protected static final String FILES_DESCRIPTION = "description";
     protected static final String FILES_CONTENTS = "contents";
     protected static final String FILES_MIMETYPE = "mimetype";
+    protected static final String FILES_FILETYPE = "filetype";
     protected static final String FILES_CREATED = "created";
     protected static final String FILES_LAST_MODIFIED = "last_modified";
     protected static final String FILES_SIZE = "size";
@@ -92,6 +96,10 @@ public class OneDriveDataStore extends Office365DataStore {
         }
     }
 
+    protected boolean isIgnoreFolder(final Map<String, String> paramMap) {
+        return paramMap.getOrDefault(IGNORE_FOLDER, Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+    }
+
     protected void storeSharedDocumentsDrive(final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
         getDriveItemsInDrive(client.drive()).forEach(item -> {
@@ -126,14 +134,24 @@ public class OneDriveDataStore extends Office365DataStore {
     protected void processDriveItem(final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IDriveRequestBuilder builder,
             final DriveItem item, final List<String> roles) {
+        final String mimetype = item.file != null ? item.file.mimeType : null;
+        if (isIgnoreFolder(paramMap) && mimetype == null) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Ignore item: {}", item.webUrl);
+            }
+            return;
+        }
+
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
         final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
         final Map<String, Object> filesMap = new HashMap<>();
 
+        final String filetype = ComponentUtil.getFileTypeHelper().get(mimetype);
         filesMap.put(FILES_NAME, item.name);
         filesMap.put(FILES_DESCRIPTION, item.description != null ? item.description : StringUtil.EMPTY);
         filesMap.put(FILES_CONTENTS, getDriveItemContents(builder, item));
-        filesMap.put(FILES_MIMETYPE, item.file != null ? item.file.mimeType : null);
+        filesMap.put(FILES_MIMETYPE, mimetype);
+        filesMap.put(FILES_FILETYPE, filetype);
         filesMap.put(FILES_CREATED, item.createdDateTime.getTime());
         filesMap.put(FILES_LAST_MODIFIED, item.lastModifiedDateTime.getTime());
         filesMap.put(FILES_SIZE, item.size);
