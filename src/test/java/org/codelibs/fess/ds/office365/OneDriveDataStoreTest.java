@@ -15,8 +15,12 @@
  */
 package org.codelibs.fess.ds.office365;
 
-import com.microsoft.graph.models.extensions.DriveItem;
-import com.microsoft.graph.models.extensions.File;
+import java.util.Calendar;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+
 import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.es.config.exentity.DataConfig;
@@ -26,23 +30,18 @@ import org.dbflute.utflute.lastadi.ContainerTestCase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Calendar;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.CountDownLatch;
-
- 
+import com.microsoft.graph.models.extensions.DriveItem;
+import com.microsoft.graph.models.extensions.File;
 
 public class OneDriveDataStoreTest extends ContainerTestCase {
 
     private static final Logger logger = LoggerFactory.getLogger(OneDriveDataStoreTest.class);
-    
+
     // for test
     public static final String tenant = "";
     public static final String clientId = "";
     public static final String clientSecret = "";
-    
+
     private OneDriveDataStore dataStore;
 
     @Override
@@ -105,6 +104,9 @@ public class OneDriveDataStoreTest extends ContainerTestCase {
     public void testProcessDriveItem() throws Exception {
         final Map<String, String> paramMap = new HashMap<>();
         final Map<String, String> scriptMap = new HashMap<>();
+        final Map<String, Object> configMap = new HashMap<>();
+        configMap.put(OneDriveDataStore.IGNORE_FOLDER, true);
+        configMap.put(OneDriveDataStore.SUPPORTED_MIMETYPES, new String[] { "text/.*" });
         scriptMap.put("name", "files.name");
         scriptMap.put("description", "files.description");
         scriptMap.put("contents", "files.contents");
@@ -134,13 +136,13 @@ public class OneDriveDataStoreTest extends ContainerTestCase {
                 assertEquals(item.webUrl, dataMap.get("web_url"));
                 latch.countDown();
             }
-        }, paramMap, scriptMap, defaultDataMap, null, item, Collections.emptyList());
+        }, configMap, paramMap, scriptMap, defaultDataMap, null, item, Collections.emptyList());
         latch.await();
     }
 
     public void testGetDriveItemContents() {
         final DriveItem item = new DriveItem();
-        assertEquals("",dataStore. getDriveItemContents(null, item));
+        assertEquals("", dataStore.getDriveItemContents(null, item, new String[] { ".*" }));
     }
 
     static abstract class TestCallback implements IndexUpdateCallback {
