@@ -47,6 +47,11 @@ public class OneDriveDataStore extends Office365DataStore {
 
     private static final Logger logger = LoggerFactory.getLogger(OneDriveDataStore.class);
 
+    protected static final String CURRENT_CRAWLER = "current_crawler";
+    protected static final String CRAWLER_TYPE_GROUP = "group";
+    protected static final String CRAWLER_TYPE_USER = "user";
+    protected static final String CRAWLER_TYPE_SHARED = "shared";
+
     // parameters
     protected static final String IGNORE_FOLDER = "ignore_folder";
     protected static final String SUPPORTED_MIMETYPES = "supported_mimetypes";
@@ -62,6 +67,7 @@ public class OneDriveDataStore extends Office365DataStore {
     protected static final String FILES_LAST_MODIFIED = "last_modified";
     protected static final String FILES_SIZE = "size";
     protected static final String FILES_WEB_URL = "web_url";
+    protected static final String FILES_URL = "url";
     protected static final String FILES_ROLES = "roles";
     protected static final String FILES_CTAG = "ctag";
     protected static final String FILES_ETAG = "etag";
@@ -120,12 +126,33 @@ public class OneDriveDataStore extends Office365DataStore {
 
         final IGraphServiceClient client = getClient(accessToken);
         try {
-            storeSharedDocumentsDrive(callback, configMap, paramMap, scriptMap, defaultDataMap, client);
-            storeUsersDrive(callback, configMap, paramMap, scriptMap, defaultDataMap, client);
-            storeGroupsDrive(callback, configMap, paramMap, scriptMap, defaultDataMap, client);
+            if (isSharedDocumentsDriveCrawler(paramMap)) {
+                configMap.put(CURRENT_CRAWLER, CRAWLER_TYPE_SHARED);
+                storeSharedDocumentsDrive(callback, configMap, paramMap, scriptMap, defaultDataMap, client);
+            }
+            if (isUserDriveCrawler(paramMap)) {
+                configMap.put(CURRENT_CRAWLER, CRAWLER_TYPE_USER);
+                storeUsersDrive(callback, configMap, paramMap, scriptMap, defaultDataMap, client);
+            }
+            if (isGroupDriveCrawler(paramMap)) {
+                configMap.put(CURRENT_CRAWLER, CRAWLER_TYPE_GROUP);
+                storeGroupsDrive(callback, configMap, paramMap, scriptMap, defaultDataMap, client);
+            }
         } finally {
             client.shutdown();
         }
+    }
+
+    protected boolean isSharedDocumentsDriveCrawler(final Map<String, String> paramMap) {
+        return paramMap.getOrDefault("shared_documents_drive_crawler", Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+    }
+
+    protected boolean isUserDriveCrawler(final Map<String, String> paramMap) {
+        return paramMap.getOrDefault("user_drive_crawler", Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+    }
+
+    protected boolean isGroupDriveCrawler(final Map<String, String> paramMap) {
+        return paramMap.getOrDefault("group_drive_crawler", Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
     }
 
     protected boolean isIgnoreFolder(final Map<String, String> paramMap) {
@@ -205,6 +232,7 @@ public class OneDriveDataStore extends Office365DataStore {
         filesMap.put(FILES_LAST_MODIFIED, item.lastModifiedDateTime.getTime());
         filesMap.put(FILES_SIZE, item.size);
         filesMap.put(FILES_WEB_URL, item.webUrl);
+        filesMap.put(FILES_URL, getUrl(configMap, paramMap, item));
         filesMap.put(FILES_ROLES, roles);
         filesMap.put(FILES_CTAG, item.cTag);
         filesMap.put(FILES_ETAG, item.eTag);
@@ -249,6 +277,29 @@ public class OneDriveDataStore extends Office365DataStore {
             callback.store(paramMap, dataMap);
         } catch (final CrawlingAccessException e) {
             logger.warn("Crawling Access Exception at : " + dataMap, e);
+        }
+    }
+
+    protected String getUrl(final Map<String, Object> configMap, final Map<String, String> paramMap, final DriveItem item) {
+        if (item.webUrl == null) {
+            return null;
+        }
+        if (!item.webUrl.contains("/_layouts/")) {
+            return item.webUrl;
+        }
+
+        final String baseUrl = item.webUrl.substring(0, item.webUrl.indexOf("/_layouts/"));
+        final String parentPath;
+        if (item.parentReference != null && item.parentReference.path != null) {
+            final String[] values = item.parentReference.path.split(":", 2);
+            parentPath = values.length > 1 ? values[1] : "/";
+        } else {
+            parentPath = "/";
+        }
+        if (CRAWLER_TYPE_SHARED.equals(configMap.get(CURRENT_CRAWLER))) {
+            return baseUrl + "/Shared%20Documents" + parentPath + "/" + item.name;
+        } else {
+            return baseUrl + "/" + parentPath + "/" + item.name;
         }
     }
 

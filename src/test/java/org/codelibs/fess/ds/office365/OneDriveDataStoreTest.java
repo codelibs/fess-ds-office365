@@ -32,6 +32,7 @@ import org.slf4j.LoggerFactory;
 
 import com.microsoft.graph.models.extensions.DriveItem;
 import com.microsoft.graph.models.extensions.File;
+import com.microsoft.graph.models.extensions.ItemReference;
 
 public class OneDriveDataStoreTest extends ContainerTestCase {
 
@@ -64,6 +65,27 @@ public class OneDriveDataStoreTest extends ContainerTestCase {
     public void tearDown() throws Exception {
         ComponentUtil.setFessConfig(null);
         super.tearDown();
+    }
+
+    public void test_getUrl() {
+        Map<String, Object> configMap = new HashMap<>();
+        Map<String, String> paramMap = new HashMap<>();
+        DriveItem item = new DriveItem();
+
+        assertNull(dataStore.getUrl(configMap, paramMap, item));
+
+        configMap.put(OneDriveDataStore.CURRENT_CRAWLER, OneDriveDataStore.CRAWLER_TYPE_SHARED);
+        item.webUrl =
+                "https://n2sm.sharepoint.com/sites/test-site/_layouts/15/Doc.aspx?sourcedoc=%X-X-X-X-X%7D&file=test.doc&action=default&mobileredirect=true";
+        item.parentReference = new ItemReference();
+        item.parentReference.path = "/drive/root:/fess-testdata-master/msoffice";
+        item.name = "test.doc";
+        assertEquals("https://n2sm.sharepoint.com/sites/test-site/Shared%20Documents/fess-testdata-master/msoffice/test.doc",
+                dataStore.getUrl(configMap, paramMap, item));
+
+        item.webUrl = "https://n2sm.sharepoint.com/sites/test-site/Shared%20Documents/fess-testdata-master/msoffice/test.doc";
+        assertEquals("https://n2sm.sharepoint.com/sites/test-site/Shared%20Documents/fess-testdata-master/msoffice/test.doc",
+                dataStore.getUrl(configMap, paramMap, item));
     }
 
     public void testStoreData() {
