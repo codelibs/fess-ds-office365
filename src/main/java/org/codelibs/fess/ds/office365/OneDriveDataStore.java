@@ -308,7 +308,7 @@ public class OneDriveDataStore extends Office365DataStore {
         if (CRAWLER_TYPE_SHARED.equals(configMap.get(CURRENT_CRAWLER)) || CRAWLER_TYPE_GROUP.equals(configMap.get(CURRENT_CRAWLER))) {
             return baseUrl + "/Shared%20Documents" + parentPath + "/" + item.name;
         } else {
-            return baseUrl + "/" + parentPath + "/" + item.name;
+            return baseUrl + "/Documents" + parentPath + "/" + item.name;
         }
     }
 
