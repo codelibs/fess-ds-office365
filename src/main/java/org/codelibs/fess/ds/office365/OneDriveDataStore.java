@@ -127,14 +127,23 @@ public class OneDriveDataStore extends Office365DataStore {
         final IGraphServiceClient client = getClient(accessToken);
         try {
             if (isSharedDocumentsDriveCrawler(paramMap)) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("crawling shared documents drive.");
+                }
                 configMap.put(CURRENT_CRAWLER, CRAWLER_TYPE_SHARED);
                 storeSharedDocumentsDrive(callback, configMap, paramMap, scriptMap, defaultDataMap, client);
             }
             if (isUserDriveCrawler(paramMap)) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("crawling user drive.");
+                }
                 configMap.put(CURRENT_CRAWLER, CRAWLER_TYPE_USER);
                 storeUsersDrive(callback, configMap, paramMap, scriptMap, defaultDataMap, client);
             }
             if (isGroupDriveCrawler(paramMap)) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("crawling group drive.");
+                }
                 configMap.put(CURRENT_CRAWLER, CRAWLER_TYPE_GROUP);
                 storeGroupsDrive(callback, configMap, paramMap, scriptMap, defaultDataMap, client);
             }
@@ -333,6 +342,9 @@ public class OneDriveDataStore extends Office365DataStore {
                 return items;
             }
             page = builder.items(root.id).children().buildRequest().get();
+        }
+        if (logger.isDebugEnabled()) {
+            logger.debug("crawling item: {}", page.getRawObject());
         }
         page.getCurrentPage().forEach(i -> items.addAll(getDriveItemChildren(builder, i)));
         while (page.getNextPage() != null) {
