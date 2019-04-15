@@ -146,7 +146,7 @@ public class OneDriveDataStoreTest extends ContainerTestCase {
         item.lastModifiedDateTime = Calendar.getInstance();
         item.webUrl = "piyo";
         final CountDownLatch latch = new CountDownLatch(1);
-        dataStore.processDriveItem(new TestCallback() {
+        dataStore.processDriveItem(null, new TestCallback() {
             @Override
             public void test(Map<String, String> paramMap, Map<String, Object> dataMap) {
                 assertEquals(item.name, dataMap.get("name"));
