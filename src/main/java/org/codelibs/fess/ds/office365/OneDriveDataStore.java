@@ -15,7 +15,6 @@
  */
 package org.codelibs.fess.ds.office365;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -27,15 +26,19 @@ import java.util.stream.Stream;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.stream.StreamUtil;
 import org.codelibs.fess.Constants;
+import org.codelibs.fess.app.service.FailureUrlService;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
+import org.codelibs.fess.crawler.exception.MultipleCrawlingAccessException;
 import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.es.config.exentity.DataConfig;
+import org.codelibs.fess.exception.DataStoreCrawlingException;
 import org.codelibs.fess.exception.DataStoreException;
 import org.codelibs.fess.util.ComponentUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.microsoft.graph.core.ClientException;
 import com.microsoft.graph.http.GraphServiceException;
 import com.microsoft.graph.models.extensions.DriveItem;
 import com.microsoft.graph.models.extensions.Hashes;
@@ -131,21 +134,21 @@ public class OneDriveDataStore extends Office365DataStore {
                     logger.debug("crawling shared documents drive.");
                 }
                 configMap.put(CURRENT_CRAWLER, CRAWLER_TYPE_SHARED);
-                storeSharedDocumentsDrive(callback, configMap, paramMap, scriptMap, defaultDataMap, client);
+                storeSharedDocumentsDrive(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client);
             }
             if (isUserDriveCrawler(paramMap)) {
                 if (logger.isDebugEnabled()) {
                     logger.debug("crawling user drive.");
                 }
                 configMap.put(CURRENT_CRAWLER, CRAWLER_TYPE_USER);
-                storeUsersDrive(callback, configMap, paramMap, scriptMap, defaultDataMap, client);
+                storeUsersDrive(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client);
             }
             if (isGroupDriveCrawler(paramMap)) {
                 if (logger.isDebugEnabled()) {
                     logger.debug("crawling group drive.");
                 }
                 configMap.put(CURRENT_CRAWLER, CRAWLER_TYPE_GROUP);
-                storeGroupsDrive(callback, configMap, paramMap, scriptMap, defaultDataMap, client);
+                storeGroupsDrive(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client);
             }
         } finally {
             client.shutdown();
@@ -173,41 +176,55 @@ public class OneDriveDataStore extends Office365DataStore {
                 .get(stream -> stream.map(s -> s.trim()).toArray(n -> new String[n]));
     }
 
-    protected void storeSharedDocumentsDrive(final IndexUpdateCallback callback, final Map<String, Object> configMap,
-            final Map<String, String> paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
-            final IGraphServiceClient client) {
-        getDriveItemsInDrive(client.drive()).forEach(item -> {
-            processDriveItem(callback, configMap, paramMap, scriptMap, defaultDataMap, client.drive(), item, null);
-        });
-    }
-
-    protected void storeUsersDrive(final IndexUpdateCallback callback, final Map<String, Object> configMap,
-            final Map<String, String> paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
-            final IGraphServiceClient client) {
-        getLicensedUsers(client).forEach(user -> {
-            final List<String> roles = getUserRoles(user);
-            try {
-                getDriveItemsInDrive(client.users(user.id).drive()).forEach(item -> {
-                    processDriveItem(callback, configMap, paramMap, scriptMap, defaultDataMap, client.users(user.id).drive(), item, roles);
-                });
-            } catch (final GraphServiceException e) {
-                logger.warn("Failed to store " + user.displayName + "'s Drive, ", e);
-            }
-        });
-    }
-
-    protected void storeGroupsDrive(final IndexUpdateCallback callback, final Map<String, Object> configMap,
-            final Map<String, String> paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
-            final IGraphServiceClient client) {
-        getOffice365Groups(client).forEach(group -> {
-            final List<String> roles = getGroupRoles(group);
-            getDriveItemsInDrive(client.groups(group.id).drive()).forEach(item -> {
-                processDriveItem(callback, configMap, paramMap, scriptMap, defaultDataMap, client.groups(group.id).drive(), item, roles);
+    protected void storeSharedDocumentsDrive(final DataConfig dataConfig, final IndexUpdateCallback callback,
+            final Map<String, Object> configMap, final Map<String, String> paramMap, final Map<String, String> scriptMap,
+            final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
+        try {
+            getDriveItemsInDrive(client.drive()).forEach(item -> {
+                processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client.drive(), item, null);
             });
-        });
+        } catch (Exception e) {
+            logger.warn("Failed to process shared documents drive.", e);
+        }
     }
 
-    protected void processDriveItem(final IndexUpdateCallback callback, final Map<String, Object> configMap,
+    protected void storeUsersDrive(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, Object> configMap,
+            final Map<String, String> paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
+            final IGraphServiceClient client) {
+        try {
+            getLicensedUsers(client).forEach(user -> {
+                final List<String> roles = getUserRoles(user);
+                try {
+                    getDriveItemsInDrive(client.users(user.id).drive()).forEach(item -> {
+                        processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap,
+                                client.users(user.id).drive(), item, roles);
+                    });
+                } catch (final GraphServiceException e) {
+                    logger.warn("Failed to store " + user.displayName + "'s Drive, ", e);
+                }
+            });
+        } catch (Exception e) {
+            logger.warn("Failed to process user drive.", e);
+        }
+    }
+
+    protected void storeGroupsDrive(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, Object> configMap,
+            final Map<String, String> paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
+            final IGraphServiceClient client) {
+        try {
+            getOffice365Groups(client).forEach(group -> {
+                final List<String> roles = getGroupRoles(group);
+                getDriveItemsInDrive(client.groups(group.id).drive()).forEach(item -> {
+                    processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client.groups(group.id).drive(),
+                            item, roles);
+                });
+            });
+        } catch (Exception e) {
+            logger.warn("Failed to process group drive.", e);
+        }
+    }
+
+    protected void processDriveItem(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, Object> configMap,
             final Map<String, String> paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
             final IDriveRequestBuilder builder, final DriveItem item, final List<String> roles) {
         final String mimetype;
@@ -231,48 +248,48 @@ public class OneDriveDataStore extends Office365DataStore {
         final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
         final Map<String, Object> filesMap = new HashMap<>();
 
-        final String filetype = ComponentUtil.getFileTypeHelper().get(mimetype);
-        filesMap.put(FILES_NAME, item.name);
-        filesMap.put(FILES_DESCRIPTION, item.description != null ? item.description : StringUtil.EMPTY);
-        filesMap.put(FILES_CONTENTS, getDriveItemContents(builder, item, supportedMimeTypes));
-        filesMap.put(FILES_MIMETYPE, mimetype);
-        filesMap.put(FILES_FILETYPE, filetype);
-        filesMap.put(FILES_CREATED, item.createdDateTime.getTime());
-        filesMap.put(FILES_LAST_MODIFIED, item.lastModifiedDateTime.getTime());
-        filesMap.put(FILES_SIZE, item.size);
-        filesMap.put(FILES_WEB_URL, item.webUrl);
-        filesMap.put(FILES_URL, getUrl(configMap, paramMap, item));
-        filesMap.put(FILES_ROLES, roles);
-        filesMap.put(FILES_CTAG, item.cTag);
-        filesMap.put(FILES_ETAG, item.eTag);
-        filesMap.put(FILES_ID, item.id);
-        filesMap.put(FILES_WEBDAV_URL, item.webDavUrl);
-        filesMap.put(FILES_LOCATION, item.location);
-        filesMap.put(FILES_CREATEDBY_APPLICATION, item.createdBy != null ? item.createdBy.application : null);
-        filesMap.put(FILES_CREATEDBY_DEVICE, item.createdBy != null ? item.createdBy.device : null);
-        filesMap.put(FILES_CREATEDBY_USER, item.createdBy != null ? item.createdBy.user : null);
-        filesMap.put(FILES_DELETED, item.deleted);
-        filesMap.put(FILES_HASHES, hashes);
-        filesMap.put(FILES_LAST_MODIFIEDBY_APPLICATION, item.lastModifiedBy != null ? item.lastModifiedBy.application : null);
-        filesMap.put(FILES_LAST_MODIFIEDBY_DEVICE, item.lastModifiedBy != null ? item.lastModifiedBy.device : null);
-        filesMap.put(FILES_LAST_MODIFIEDBY_USER, item.lastModifiedBy != null ? item.lastModifiedBy.user : null);
-        filesMap.put(FILES_IMAGE, item.image);
-        filesMap.put(FILES_PARENT, item.parentReference);
-        filesMap.put(FILES_PARENT_ID, item.parentReference != null ? item.parentReference.id : null);
-        filesMap.put(FILES_PARENT_NAME, item.parentReference != null ? item.parentReference.name : null);
-        filesMap.put(FILES_PARENT_PATH, item.parentReference != null ? item.parentReference.path : null);
-        filesMap.put(FILES_PHOTO, item.photo);
-        filesMap.put(FILES_PUBLICATION, item.publication);
-        filesMap.put(FILES_SEARCH_RESULT, item.searchResult);
-        filesMap.put(FILES_SPECIAL_FOLDER, item.specialFolder != null ? item.specialFolder.name : null);
-        filesMap.put(FILES_VIDEO, item.video);
-
-        resultMap.put(FILES, filesMap);
-        if (logger.isDebugEnabled()) {
-            logger.debug("filesMap: {}", filesMap);
-        }
-
         try {
+            final String filetype = ComponentUtil.getFileTypeHelper().get(mimetype);
+            filesMap.put(FILES_NAME, item.name);
+            filesMap.put(FILES_DESCRIPTION, item.description != null ? item.description : StringUtil.EMPTY);
+            filesMap.put(FILES_CONTENTS, getDriveItemContents(builder, item, supportedMimeTypes));
+            filesMap.put(FILES_MIMETYPE, mimetype);
+            filesMap.put(FILES_FILETYPE, filetype);
+            filesMap.put(FILES_CREATED, item.createdDateTime.getTime());
+            filesMap.put(FILES_LAST_MODIFIED, item.lastModifiedDateTime.getTime());
+            filesMap.put(FILES_SIZE, item.size);
+            filesMap.put(FILES_WEB_URL, item.webUrl);
+            filesMap.put(FILES_URL, getUrl(configMap, paramMap, item));
+            filesMap.put(FILES_ROLES, roles);
+            filesMap.put(FILES_CTAG, item.cTag);
+            filesMap.put(FILES_ETAG, item.eTag);
+            filesMap.put(FILES_ID, item.id);
+            filesMap.put(FILES_WEBDAV_URL, item.webDavUrl);
+            filesMap.put(FILES_LOCATION, item.location);
+            filesMap.put(FILES_CREATEDBY_APPLICATION, item.createdBy != null ? item.createdBy.application : null);
+            filesMap.put(FILES_CREATEDBY_DEVICE, item.createdBy != null ? item.createdBy.device : null);
+            filesMap.put(FILES_CREATEDBY_USER, item.createdBy != null ? item.createdBy.user : null);
+            filesMap.put(FILES_DELETED, item.deleted);
+            filesMap.put(FILES_HASHES, hashes);
+            filesMap.put(FILES_LAST_MODIFIEDBY_APPLICATION, item.lastModifiedBy != null ? item.lastModifiedBy.application : null);
+            filesMap.put(FILES_LAST_MODIFIEDBY_DEVICE, item.lastModifiedBy != null ? item.lastModifiedBy.device : null);
+            filesMap.put(FILES_LAST_MODIFIEDBY_USER, item.lastModifiedBy != null ? item.lastModifiedBy.user : null);
+            filesMap.put(FILES_IMAGE, item.image);
+            filesMap.put(FILES_PARENT, item.parentReference);
+            filesMap.put(FILES_PARENT_ID, item.parentReference != null ? item.parentReference.id : null);
+            filesMap.put(FILES_PARENT_NAME, item.parentReference != null ? item.parentReference.name : null);
+            filesMap.put(FILES_PARENT_PATH, item.parentReference != null ? item.parentReference.path : null);
+            filesMap.put(FILES_PHOTO, item.photo);
+            filesMap.put(FILES_PUBLICATION, item.publication);
+            filesMap.put(FILES_SEARCH_RESULT, item.searchResult);
+            filesMap.put(FILES_SPECIAL_FOLDER, item.specialFolder != null ? item.specialFolder.name : null);
+            filesMap.put(FILES_VIDEO, item.video);
+
+            resultMap.put(FILES, filesMap);
+            if (logger.isDebugEnabled()) {
+                logger.debug("filesMap: {}", filesMap);
+            }
+
             for (final Map.Entry<String, String> entry : scriptMap.entrySet()) {
                 final Object convertValue = convertValue(entry.getValue(), resultMap);
                 if (convertValue != null) {
@@ -286,6 +303,29 @@ public class OneDriveDataStore extends Office365DataStore {
             callback.store(paramMap, dataMap);
         } catch (final CrawlingAccessException e) {
             logger.warn("Crawling Access Exception at : " + dataMap, e);
+
+            Throwable target = e;
+            if (target instanceof MultipleCrawlingAccessException) {
+                final Throwable[] causes = ((MultipleCrawlingAccessException) target).getCauses();
+                if (causes.length > 0) {
+                    target = causes[causes.length - 1];
+                }
+            }
+
+            String errorName;
+            final Throwable cause = target.getCause();
+            if (cause != null) {
+                errorName = cause.getClass().getCanonicalName();
+            } else {
+                errorName = target.getClass().getCanonicalName();
+            }
+
+            final FailureUrlService failureUrlService = ComponentUtil.getComponent(FailureUrlService.class);
+            failureUrlService.store(dataConfig, errorName, item.webUrl, target);
+        } catch (final Throwable t) {
+            logger.warn("Crawling Access Exception at : " + dataMap, t);
+            final FailureUrlService failureUrlService = ComponentUtil.getComponent(FailureUrlService.class);
+            failureUrlService.store(dataConfig, t.getClass().getCanonicalName(), item.webUrl, t);
         }
     }
 
@@ -319,8 +359,8 @@ public class OneDriveDataStore extends Office365DataStore {
                 try (final InputStream in = builder.items(item.id).content().buildRequest().get()) {
                     final TikaExtractor extractor = ComponentUtil.getComponent(extractorName);
                     return extractor.getText(in, null).getContent();
-                } catch (final IOException e) {
-                    logger.warn("Failed to get contents of DriveItem: " + item.name, e);
+                } catch (final Exception e) {
+                    throw new DataStoreCrawlingException(item.webUrl, "Failed to get contents of DriveItem: " + item.name, e);
                 }
             }
         }
@@ -334,22 +374,38 @@ public class OneDriveDataStore extends Office365DataStore {
     protected List<DriveItem> getDriveItemChildren(final IDriveRequestBuilder builder, final DriveItem root) {
         final List<DriveItem> items = new ArrayList<>();
         IDriveItemCollectionPage page;
-        if (root == null) {
-            page = builder.root().children().buildRequest().get();
-        } else {
-            items.add(root);
-            if (root.folder == null) {
-                return items;
+        try {
+            if (root == null) {
+                page = builder.root().children().buildRequest().get();
+            } else {
+                items.add(root);
+                if (root.folder == null) {
+                    return items;
+                }
+                page = builder.items(root.id).children().buildRequest().get();
             }
-            page = builder.items(root.id).children().buildRequest().get();
-        }
-        if (logger.isDebugEnabled()) {
-            logger.debug("crawling item: {}", page.getRawObject());
-        }
-        page.getCurrentPage().forEach(i -> items.addAll(getDriveItemChildren(builder, i)));
-        while (page.getNextPage() != null) {
-            page = page.getNextPage().buildRequest().get();
+            if (logger.isDebugEnabled()) {
+                logger.debug("crawling item: {}", page.getRawObject());
+            }
             page.getCurrentPage().forEach(i -> items.addAll(getDriveItemChildren(builder, i)));
+            while (page.getNextPage() != null) {
+                try {
+                    page = page.getNextPage().buildRequest().get();
+                    page.getCurrentPage().forEach(i -> items.addAll(getDriveItemChildren(builder, i)));
+                } catch (Exception e) {
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Failed to process a next page.", e);
+                    }
+                }
+            }
+        } catch (final GraphServiceException e) {
+            if (e.getResponseCode() == 404) {
+                logger.debug("Drive item is not found.", e);
+            } else {
+                logger.warn("Failed to access a drive item.", e);
+            }
+        } catch (final ClientException e) {
+            logger.warn("Failed to access a drive item.", e);
         }
         return items;
     }
