@@ -31,6 +31,7 @@ import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.exception.MaxLengthExceededException;
 import org.codelibs.fess.crawler.exception.MultipleCrawlingAccessException;
 import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
+import org.codelibs.fess.crawler.filter.UrlFilter;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.exception.DataStoreCrawlingException;
@@ -62,6 +63,9 @@ public class OneDriveDataStore extends Office365DataStore {
     protected static final String MAX_SIZE = "max_size";
     protected static final String IGNORE_FOLDER = "ignore_folder";
     protected static final String SUPPORTED_MIMETYPES = "supported_mimetypes";
+    protected static final String INCLUDE_PATTERN = "include_pattern";
+    protected static final String EXCLUDE_PATTERN = "exclude_patter";
+    protected static final String URL_FILTER = "url_filter";
 
     // scripts
     protected static final String FILES = "files";
@@ -128,6 +132,7 @@ public class OneDriveDataStore extends Office365DataStore {
         configMap.put(MAX_SIZE, getMaxSize(paramMap));
         configMap.put(IGNORE_FOLDER, isIgnoreFolder(paramMap));
         configMap.put(SUPPORTED_MIMETYPES, getSupportedMimeTypes(paramMap));
+        configMap.put(URL_FILTER, getUrlFilter(paramMap));
         if (logger.isDebugEnabled()) {
             logger.debug("configMap: {}", configMap);
         }
@@ -158,6 +163,20 @@ public class OneDriveDataStore extends Office365DataStore {
         } finally {
             client.shutdown();
         }
+    }
+
+    protected UrlFilter getUrlFilter(final Map<String, String> paramMap) {
+        final UrlFilter urlFilter = ComponentUtil.getComponent(UrlFilter.class);
+        urlFilter.init(paramMap.get(Constants.CRAWLING_INFO_ID));
+        final String include = paramMap.get(INCLUDE_PATTERN);
+        if (StringUtil.isNotBlank(include)) {
+            urlFilter.addInclude(include);
+        }
+        final String exclude = paramMap.get(EXCLUDE_PATTERN);
+        if (StringUtil.isNotBlank(exclude)) {
+            urlFilter.addExclude(exclude);
+        }
+        return urlFilter;
     }
 
     protected boolean isSharedDocumentsDriveCrawler(final Map<String, String> paramMap) {
@@ -256,6 +275,16 @@ public class OneDriveDataStore extends Office365DataStore {
             }
             return;
         }
+
+        final String url = getUrl(configMap, paramMap, item);
+        final UrlFilter urlFilter = (UrlFilter) configMap.get(URL_FILTER);
+        if (urlFilter != null && !urlFilter.match(url)) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Not matched: " + url);
+            }
+            return;
+        }
+
         final String[] supportedMimeTypes = (String[]) configMap.get(SUPPORTED_MIMETYPES);
 
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
@@ -278,7 +307,7 @@ public class OneDriveDataStore extends Office365DataStore {
             filesMap.put(FILES_LAST_MODIFIED, item.lastModifiedDateTime.getTime());
             filesMap.put(FILES_SIZE, item.size);
             filesMap.put(FILES_WEB_URL, item.webUrl);
-            filesMap.put(FILES_URL, getUrl(configMap, paramMap, item));
+            filesMap.put(FILES_URL, url);
             filesMap.put(FILES_ROLES, roles);
             filesMap.put(FILES_CTAG, item.cTag);
             filesMap.put(FILES_ETAG, item.eTag);
