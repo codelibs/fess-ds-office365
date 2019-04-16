@@ -28,6 +28,7 @@ import org.codelibs.core.stream.StreamUtil;
 import org.codelibs.fess.Constants;
 import org.codelibs.fess.app.service.FailureUrlService;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
+import org.codelibs.fess.crawler.exception.MaxLengthExceededException;
 import org.codelibs.fess.crawler.exception.MultipleCrawlingAccessException;
 import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
@@ -50,12 +51,15 @@ public class OneDriveDataStore extends Office365DataStore {
 
     private static final Logger logger = LoggerFactory.getLogger(OneDriveDataStore.class);
 
+    protected static final long DEFAULT_MAX_SIZE = 10000000L; // 10m
+
     protected static final String CURRENT_CRAWLER = "current_crawler";
     protected static final String CRAWLER_TYPE_GROUP = "group";
     protected static final String CRAWLER_TYPE_USER = "user";
     protected static final String CRAWLER_TYPE_SHARED = "shared";
 
     // parameters
+    protected static final String MAX_SIZE = "max_size";
     protected static final String IGNORE_FOLDER = "ignore_folder";
     protected static final String SUPPORTED_MIMETYPES = "supported_mimetypes";
 
@@ -121,6 +125,7 @@ public class OneDriveDataStore extends Office365DataStore {
         final String accessToken = getAccessToken(tenant, clientId, clientSecret);
 
         final Map<String, Object> configMap = new HashMap<>();
+        configMap.put(MAX_SIZE, getMaxSize(paramMap));
         configMap.put(IGNORE_FOLDER, isIgnoreFolder(paramMap));
         configMap.put(SUPPORTED_MIMETYPES, getSupportedMimeTypes(paramMap));
         if (logger.isDebugEnabled()) {
@@ -169,6 +174,15 @@ public class OneDriveDataStore extends Office365DataStore {
 
     protected boolean isIgnoreFolder(final Map<String, String> paramMap) {
         return paramMap.getOrDefault(IGNORE_FOLDER, Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+    }
+
+    protected long getMaxSize(final Map<String, String> paramMap) {
+        final String value = paramMap.get(MAX_SIZE);
+        try {
+            return StringUtil.isNotBlank(value) ? Long.parseLong(value) : DEFAULT_MAX_SIZE;
+        } catch (NumberFormatException e) {
+            return DEFAULT_MAX_SIZE;
+        }
     }
 
     protected String[] getSupportedMimeTypes(final Map<String, String> paramMap) {
@@ -249,6 +263,11 @@ public class OneDriveDataStore extends Office365DataStore {
         final Map<String, Object> filesMap = new HashMap<>();
 
         try {
+            if (item.size.longValue() > ((Long) configMap.get(MAX_SIZE)).longValue()) {
+                throw new MaxLengthExceededException("The content length (" + item.size + " byte) is over " + configMap.get(MAX_SIZE)
+                        + " byte. The url is " + item.webUrl);
+            }
+
             final String filetype = ComponentUtil.getFileTypeHelper().get(mimetype);
             filesMap.put(FILES_NAME, item.name);
             filesMap.put(FILES_DESCRIPTION, item.description != null ? item.description : StringUtil.EMPTY);

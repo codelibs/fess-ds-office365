@@ -129,6 +129,7 @@ public class OneDriveDataStoreTest extends ContainerTestCase {
         final Map<String, Object> configMap = new HashMap<>();
         configMap.put(OneDriveDataStore.IGNORE_FOLDER, true);
         configMap.put(OneDriveDataStore.SUPPORTED_MIMETYPES, new String[] { "text/.*" });
+        configMap.put(OneDriveDataStore.MAX_SIZE, OneDriveDataStore.DEFAULT_MAX_SIZE);
         scriptMap.put("name", "files.name");
         scriptMap.put("description", "files.description");
         scriptMap.put("contents", "files.contents");
@@ -145,6 +146,7 @@ public class OneDriveDataStoreTest extends ContainerTestCase {
         item.createdDateTime = Calendar.getInstance();
         item.lastModifiedDateTime = Calendar.getInstance();
         item.webUrl = "piyo";
+        item.size = 1L;
         final CountDownLatch latch = new CountDownLatch(1);
         dataStore.processDriveItem(null, new TestCallback() {
             @Override
