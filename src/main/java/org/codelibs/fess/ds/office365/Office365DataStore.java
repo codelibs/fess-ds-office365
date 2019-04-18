@@ -15,7 +15,6 @@
  */
 package org.codelibs.fess.ds.office365;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -23,7 +22,7 @@ import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
+import java.util.function.Consumer;
 
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.fess.ds.AbstractDataStore;
@@ -102,22 +101,16 @@ public abstract class Office365DataStore extends AbstractDataStore {
                 }).buildClient();
     }
 
-    protected List<User> getUsers(final IGraphServiceClient client) {
-        return getUsers(client, new ArrayList<>());
-    }
-
-    protected List<User> getUsers(final IGraphServiceClient client, final List<QueryOption> options) {
-        IUserCollectionPage page = client.users().buildRequest(options).get();
-        final List<User> users = new ArrayList<>(page.getCurrentPage());
+    protected void getLicensedUsers(final IGraphServiceClient client, final Consumer<User> consumer) {
+        IUserCollectionPage page = client.users().buildRequest(Collections.emptyList()).get();
         while (page.getNextPage() != null) {
             page = page.getNextPage().buildRequest().get();
-            users.addAll(page.getCurrentPage());
+            page.getCurrentPage().forEach(u -> {
+                if (isLicensedUser(client, u.id)) {
+                    consumer.accept(u);
+                }
+            });
         }
-        return users;
-    }
-
-    protected List<User> getLicensedUsers(final IGraphServiceClient client) {
-        return getUsers(client).stream().filter(user -> isLicensedUser(client, user.id)).collect(Collectors.toList());
     }
 
     protected boolean isLicensedUser(final IGraphServiceClient client, final String userId) {
@@ -130,22 +123,20 @@ public abstract class Office365DataStore extends AbstractDataStore {
         return Collections.singletonList(ComponentUtil.getSystemHelper().getSearchRoleByUser(user.id));
     }
 
-    protected List<Group> getGroups(final IGraphServiceClient client) {
-        return getGroups(client, new ArrayList<>());
+    protected void getGroups(final IGraphServiceClient client, final Consumer<Group> consumer) {
+        getGroups(client, Collections.emptyList(), consumer);
     }
 
-    protected List<Group> getGroups(final IGraphServiceClient client, final List<QueryOption> options) {
+    protected void getGroups(final IGraphServiceClient client, final List<QueryOption> options, final Consumer<Group> consumer) {
         IGroupCollectionPage page = client.groups().buildRequest(options).get();
-        final List<Group> groups = new ArrayList<>(page.getCurrentPage());
         while (page.getNextPage() != null) {
             page = page.getNextPage().buildRequest().get();
-            groups.addAll(page.getCurrentPage());
+            page.getCurrentPage().forEach(g -> consumer.accept(g));
         }
-        return groups;
     }
 
-    protected List<Group> getOffice365Groups(final IGraphServiceClient client) {
-        return getGroups(client, Collections.singletonList(new QueryOption("$filter", "groupTypes/any(c:c eq 'Unified')")));
+    protected void getOffice365Groups(final IGraphServiceClient client, final Consumer<Group> consumer) {
+        getGroups(client, Collections.singletonList(new QueryOption("$filter", "groupTypes/any(c:c eq 'Unified')")), consumer);
     }
 
     protected List<String> getGroupRoles(final Group group) {

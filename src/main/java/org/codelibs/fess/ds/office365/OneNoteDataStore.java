@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import org.codelibs.fess.app.service.FailureUrlService;
@@ -100,7 +101,7 @@ public class OneNoteDataStore extends Office365DataStore {
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
         try {
             final Site root = client.sites("root").buildRequest().get();
-            getNotebooks(client.sites(root.id).onenote()).forEach(notebook -> {
+            getNotebooks(client.sites(root.id).onenote(), notebook -> {
                 processNotebook(dataConfig, callback, paramMap, scriptMap, defaultDataMap, client.sites(root.id).onenote(), notebook, null);
             });
         } catch (ClientException e) {
@@ -111,10 +112,10 @@ public class OneNoteDataStore extends Office365DataStore {
     protected void storeUsersNotes(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
         try {
-            getLicensedUsers(client).forEach(user -> {
+            getLicensedUsers(client, user -> {
                 final List<String> roles = getUserRoles(user);
                 try {
-                    getNotebooks(client.users(user.id).onenote()).forEach(notebook -> {
+                    getNotebooks(client.users(user.id).onenote(), notebook -> {
                         processNotebook(dataConfig, callback, paramMap, scriptMap, defaultDataMap, client.users(user.id).onenote(),
                                 notebook, roles);
                     });
@@ -130,9 +131,9 @@ public class OneNoteDataStore extends Office365DataStore {
     protected void storeGroupsNotes(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
         try {
-            getOffice365Groups(client).forEach(group -> {
+            getOffice365Groups(client, group -> {
                 final List<String> roles = getGroupRoles(group);
-                getNotebooks(client.groups(group.id).onenote()).forEach(notebook -> {
+                getNotebooks(client.groups(group.id).onenote(), notebook -> {
                     processNotebook(dataConfig, callback, paramMap, scriptMap, defaultDataMap, client.groups(group.id).onenote(), notebook,
                             roles);
                 });
@@ -150,6 +151,9 @@ public class OneNoteDataStore extends Office365DataStore {
         final Map<String, Object> notebooksMap = new HashMap<>();
 
         try {
+            final String url = notebook.links.oneNoteWebUrl.href;
+            logger.info("Crawling URL: " + url);
+
             final String contents = getNotebookContents(builder, notebook);
             final long size = contents != null ? contents.length() : 0L;
             notebooksMap.put(NOTEBOOKS_NAME, notebook.displayName);
@@ -157,7 +161,7 @@ public class OneNoteDataStore extends Office365DataStore {
             notebooksMap.put(NOTEBOOKS_SIZE, size);
             notebooksMap.put(NOTEBOOKS_CREATED, notebook.createdDateTime.getTime());
             notebooksMap.put(NOTEBOOKS_LAST_MODIFIED, notebook.lastModifiedDateTime.getTime());
-            notebooksMap.put(NOTEBOOKS_WEB_URL, notebook.links.oneNoteWebUrl.href);
+            notebooksMap.put(NOTEBOOKS_WEB_URL, url);
             notebooksMap.put(NOTEBOOKS_ROLES, roles);
             resultMap.put(NOTEBOOKS, notebooksMap);
             if (logger.isDebugEnabled()) {
@@ -202,14 +206,13 @@ public class OneNoteDataStore extends Office365DataStore {
         }
     }
 
-    protected List<Notebook> getNotebooks(final IOnenoteRequestBuilder builder) {
-        final List<Notebook> notebooks = new ArrayList<>();
+    protected void getNotebooks(final IOnenoteRequestBuilder builder, final Consumer<Notebook> consumer) {
         try {
             INotebookCollectionPage page = builder.notebooks().buildRequest().get();
             while (page.getNextPage() != null) {
                 try {
                     page = page.getNextPage().buildRequest().get();
-                    notebooks.addAll(page.getCurrentPage());
+                    page.getCurrentPage().forEach(note -> consumer.accept(note));
                 } catch (ClientException e) {
                     if (logger.isDebugEnabled()) {
                         logger.debug("Failed to process a next page.", e);
@@ -225,7 +228,6 @@ public class OneNoteDataStore extends Office365DataStore {
         } catch (final ClientException e) {
             logger.warn("Failed to access a notebook.", e);
         }
-        return notebooks;
     }
 
     protected List<OnenoteSection> getSections(final INotebookRequestBuilder builder) {

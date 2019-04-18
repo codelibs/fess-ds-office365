@@ -16,11 +16,11 @@
 package org.codelibs.fess.ds.office365;
 
 import java.io.InputStream;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import org.codelibs.core.lang.StringUtil;
@@ -64,7 +64,7 @@ public class OneDriveDataStore extends Office365DataStore {
     protected static final String IGNORE_FOLDER = "ignore_folder";
     protected static final String SUPPORTED_MIMETYPES = "supported_mimetypes";
     protected static final String INCLUDE_PATTERN = "include_pattern";
-    protected static final String EXCLUDE_PATTERN = "exclude_patter";
+    protected static final String EXCLUDE_PATTERN = "exclude_pattern";
     protected static final String URL_FILTER = "url_filter";
 
     // scripts
@@ -167,7 +167,6 @@ public class OneDriveDataStore extends Office365DataStore {
 
     protected UrlFilter getUrlFilter(final Map<String, String> paramMap) {
         final UrlFilter urlFilter = ComponentUtil.getComponent(UrlFilter.class);
-        urlFilter.init(paramMap.get(Constants.CRAWLING_INFO_ID));
         final String include = paramMap.get(INCLUDE_PATTERN);
         if (StringUtil.isNotBlank(include)) {
             urlFilter.addInclude(include);
@@ -175,6 +174,10 @@ public class OneDriveDataStore extends Office365DataStore {
         final String exclude = paramMap.get(EXCLUDE_PATTERN);
         if (StringUtil.isNotBlank(exclude)) {
             urlFilter.addExclude(exclude);
+        }
+        urlFilter.init(paramMap.get(Constants.CRAWLING_INFO_ID));
+        if (logger.isDebugEnabled()) {
+            logger.debug("urlFilter: " + urlFilter);
         }
         return urlFilter;
     }
@@ -213,9 +216,9 @@ public class OneDriveDataStore extends Office365DataStore {
             final Map<String, Object> configMap, final Map<String, String> paramMap, final Map<String, String> scriptMap,
             final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
         try {
-            getDriveItemsInDrive(client.drive()).forEach(item -> {
-                processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client.drive(), item, null);
-            });
+            getDriveItemsInDrive(client.drive(), //
+                    item -> processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client.drive(), item,
+                            null));
         } catch (Exception e) {
             logger.warn("Failed to process shared documents drive.", e);
         }
@@ -225,13 +228,12 @@ public class OneDriveDataStore extends Office365DataStore {
             final Map<String, String> paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
             final IGraphServiceClient client) {
         try {
-            getLicensedUsers(client).forEach(user -> {
+            getLicensedUsers(client, user -> {
                 final List<String> roles = getUserRoles(user);
                 try {
-                    getDriveItemsInDrive(client.users(user.id).drive()).forEach(item -> {
-                        processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap,
-                                client.users(user.id).drive(), item, roles);
-                    });
+                    getDriveItemsInDrive(client.users(user.id).drive(), //
+                            item -> processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap,
+                                    client.users(user.id).drive(), item, roles));
                 } catch (final GraphServiceException e) {
                     logger.warn("Failed to store " + user.displayName + "'s Drive, ", e);
                 }
@@ -245,12 +247,11 @@ public class OneDriveDataStore extends Office365DataStore {
             final Map<String, String> paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
             final IGraphServiceClient client) {
         try {
-            getOffice365Groups(client).forEach(group -> {
+            getOffice365Groups(client, group -> {
                 final List<String> roles = getGroupRoles(group);
-                getDriveItemsInDrive(client.groups(group.id).drive()).forEach(item -> {
-                    processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client.groups(group.id).drive(),
-                            item, roles);
-                });
+                getDriveItemsInDrive(client.groups(group.id).drive(), //
+                        item -> processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap,
+                                client.groups(group.id).drive(), item, roles));
             });
         } catch (Exception e) {
             logger.warn("Failed to process group drive.", e);
@@ -284,6 +285,8 @@ public class OneDriveDataStore extends Office365DataStore {
             }
             return;
         }
+
+        logger.info("Crawling URL: " + url);
 
         final String[] supportedMimeTypes = (String[]) configMap.get(SUPPORTED_MIMETYPES);
 
@@ -415,31 +418,30 @@ public class OneDriveDataStore extends Office365DataStore {
         return StringUtil.EMPTY;
     }
 
-    protected List<DriveItem> getDriveItemsInDrive(final IDriveRequestBuilder builder) {
-        return getDriveItemChildren(builder, null);
+    protected void getDriveItemsInDrive(final IDriveRequestBuilder builder, final Consumer<DriveItem> consumer) {
+        getDriveItemChildren(builder, consumer, null);
     }
 
-    protected List<DriveItem> getDriveItemChildren(final IDriveRequestBuilder builder, final DriveItem root) {
-        final List<DriveItem> items = new ArrayList<>();
+    protected void getDriveItemChildren(final IDriveRequestBuilder builder, final Consumer<DriveItem> consumer, final DriveItem root) {
         IDriveItemCollectionPage page;
         try {
             if (root == null) {
                 page = builder.root().children().buildRequest().get();
             } else {
-                items.add(root);
+                consumer.accept(root);
                 if (root.folder == null) {
-                    return items;
+                    return;
                 }
                 page = builder.items(root.id).children().buildRequest().get();
             }
             if (logger.isDebugEnabled()) {
                 logger.debug("crawling item: {}", page.getRawObject());
             }
-            page.getCurrentPage().forEach(i -> items.addAll(getDriveItemChildren(builder, i)));
+            page.getCurrentPage().forEach(i -> getDriveItemChildren(builder, consumer, i));
             while (page.getNextPage() != null) {
                 try {
                     page = page.getNextPage().buildRequest().get();
-                    page.getCurrentPage().forEach(i -> items.addAll(getDriveItemChildren(builder, i)));
+                    page.getCurrentPage().forEach(i -> getDriveItemChildren(builder, consumer, i));
                 } catch (Exception e) {
                     if (logger.isDebugEnabled()) {
                         logger.debug("Failed to process a next page.", e);
@@ -455,7 +457,6 @@ public class OneDriveDataStore extends Office365DataStore {
         } catch (final ClientException e) {
             logger.warn("Failed to access a drive item.", e);
         }
-        return items;
     }
 
     public void setExtractorName(String extractorName) {
