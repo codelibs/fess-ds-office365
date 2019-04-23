@@ -15,21 +15,17 @@
  */
 package org.codelibs.fess.ds.office365;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
+import java.util.function.Function;
 
+import org.codelibs.fess.Constants;
 import org.codelibs.fess.app.service.FailureUrlService;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.exception.MultipleCrawlingAccessException;
-import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.exception.DataStoreException;
@@ -41,15 +37,9 @@ import com.microsoft.graph.core.ClientException;
 import com.microsoft.graph.http.GraphServiceException;
 import com.microsoft.graph.models.extensions.IGraphServiceClient;
 import com.microsoft.graph.models.extensions.Notebook;
-import com.microsoft.graph.models.extensions.OnenotePage;
-import com.microsoft.graph.models.extensions.OnenoteSection;
 import com.microsoft.graph.models.extensions.Site;
 import com.microsoft.graph.requests.extensions.INotebookCollectionPage;
-import com.microsoft.graph.requests.extensions.INotebookRequestBuilder;
-import com.microsoft.graph.requests.extensions.IOnenotePageCollectionPage;
 import com.microsoft.graph.requests.extensions.IOnenoteRequestBuilder;
-import com.microsoft.graph.requests.extensions.IOnenoteSectionCollectionPage;
-import com.microsoft.graph.requests.extensions.IOnenoteSectionRequestBuilder;
 
 public class OneNoteDataStore extends Office365DataStore {
 
@@ -85,67 +75,90 @@ public class OneNoteDataStore extends Office365DataStore {
                     CLIENT_SECRET_PARAM + "' is required");
         }
 
-        final String accessToken = getAccessToken(tenant, clientId, clientSecret);
-
-        final IGraphServiceClient client = getClient(accessToken);
-        try {
-            storeSiteNotes(dataConfig, callback, paramMap, scriptMap, defaultDataMap, client);
-            storeUsersNotes(dataConfig, callback, paramMap, scriptMap, defaultDataMap, client);
-            storeGroupsNotes(dataConfig, callback, paramMap, scriptMap, defaultDataMap, client);
-        } finally {
-            client.shutdown();
+        try (final Office365Client client = new Office365Client(tenant, clientId, clientSecret, getAccessTimeout(paramMap))) {
+            if (isSiteNoteCrawler(paramMap)) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("crawling site notes.");
+                }
+                storeSiteNotes(dataConfig, callback, paramMap, scriptMap, defaultDataMap, client);
+            }
+            if (isUserNoteCrawler(paramMap)) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("crawling user notes.");
+                }
+                storeUsersNotes(dataConfig, callback, paramMap, scriptMap, defaultDataMap, client);
+            }
+            if (isGroupNoteCrawler(paramMap)) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("crawling group notes.");
+                }
+                storeGroupsNotes(dataConfig, callback, paramMap, scriptMap, defaultDataMap, client);
+            }
         }
     }
 
+    private boolean isGroupNoteCrawler(final Map<String, String> paramMap) {
+        return paramMap.getOrDefault("group_note_crawler", Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+    }
+
+    private boolean isUserNoteCrawler(final Map<String, String> paramMap) {
+        return paramMap.getOrDefault("user_note_crawler", Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+    }
+
+    private boolean isSiteNoteCrawler(final Map<String, String> paramMap) {
+        return paramMap.getOrDefault("site_note_crawler", Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+    }
+
     protected void storeSiteNotes(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
-            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
+            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Office365Client client) {
         try {
-            final Site root = client.sites("root").buildRequest().get();
-            getNotebooks(client.sites(root.id).onenote(), notebook -> {
-                processNotebook(dataConfig, callback, paramMap, scriptMap, defaultDataMap, client.sites(root.id).onenote(), notebook, null);
+            final Site root = client.getSite("root");
+            getNotebooks(client, c -> c.sites(root.id).onenote(), notebook -> {
+                processNotebook(dataConfig, callback, paramMap, scriptMap, defaultDataMap, client, c -> c.sites(root.id).onenote(),
+                        notebook, null);
             });
-        } catch (ClientException e) {
+        } catch (final ClientException e) {
             logger.warn("Failed to process site notes.", e);
         }
     }
 
     protected void storeUsersNotes(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
-            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
+            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Office365Client client) {
         try {
             getLicensedUsers(client, user -> {
                 final List<String> roles = getUserRoles(user);
                 try {
-                    getNotebooks(client.users(user.id).onenote(), notebook -> {
-                        processNotebook(dataConfig, callback, paramMap, scriptMap, defaultDataMap, client.users(user.id).onenote(),
+                    getNotebooks(client, c -> c.users(user.id).onenote(), notebook -> {
+                        processNotebook(dataConfig, callback, paramMap, scriptMap, defaultDataMap, client, c -> c.users(user.id).onenote(),
                                 notebook, roles);
                     });
                 } catch (final GraphServiceException e) {
                     logger.warn("Failed to store " + user.displayName + "'s Notebooks.", e);
                 }
             });
-        } catch (Exception e) {
+        } catch (final Exception e) {
             logger.warn("Failed to process user notes.", e);
         }
     }
 
     protected void storeGroupsNotes(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
-            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
+            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Office365Client client) {
         try {
             getOffice365Groups(client, group -> {
                 final List<String> roles = getGroupRoles(group);
-                getNotebooks(client.groups(group.id).onenote(), notebook -> {
-                    processNotebook(dataConfig, callback, paramMap, scriptMap, defaultDataMap, client.groups(group.id).onenote(), notebook,
-                            roles);
+                getNotebooks(client, c -> c.groups(group.id).onenote(), notebook -> {
+                    processNotebook(dataConfig, callback, paramMap, scriptMap, defaultDataMap, client, c -> c.groups(group.id).onenote(),
+                            notebook, roles);
                 });
             });
-        } catch (Exception e) {
+        } catch (final Exception e) {
             logger.warn("Failed to process group notes.", e);
         }
     }
 
     protected void processNotebook(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
-            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final IOnenoteRequestBuilder builder,
-            final Notebook notebook, final List<String> roles) {
+            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Office365Client client,
+            final Function<IGraphServiceClient, IOnenoteRequestBuilder> builder, final Notebook notebook, final List<String> roles) {
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
         final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
         final Map<String, Object> notebooksMap = new HashMap<>();
@@ -154,7 +167,7 @@ public class OneNoteDataStore extends Office365DataStore {
             final String url = notebook.links.oneNoteWebUrl.href;
             logger.info("Crawling URL: " + url);
 
-            final String contents = getNotebookContents(builder, notebook);
+            final String contents = client.getNotebookContent(builder, notebook.id);
             final long size = contents != null ? contents.length() : 0L;
             notebooksMap.put(NOTEBOOKS_NAME, notebook.displayName);
             notebooksMap.put(NOTEBOOKS_CONTENTS, contents);
@@ -206,14 +219,15 @@ public class OneNoteDataStore extends Office365DataStore {
         }
     }
 
-    protected void getNotebooks(final IOnenoteRequestBuilder builder, final Consumer<Notebook> consumer) {
+    protected void getNotebooks(final Office365Client client, final Function<IGraphServiceClient, IOnenoteRequestBuilder> builder,
+            final Consumer<Notebook> consumer) {
         try {
-            INotebookCollectionPage page = builder.notebooks().buildRequest().get();
+            INotebookCollectionPage page = client.getNotebookPage(builder);
             while (page.getNextPage() != null) {
                 try {
-                    page = page.getNextPage().buildRequest().get();
+                    page = client.getNextNotebookPage(page);
                     page.getCurrentPage().forEach(note -> consumer.accept(note));
-                } catch (ClientException e) {
+                } catch (final ClientException e) {
                     if (logger.isDebugEnabled()) {
                         logger.debug("Failed to process a next page.", e);
                     }
@@ -228,53 +242,6 @@ public class OneNoteDataStore extends Office365DataStore {
         } catch (final ClientException e) {
             logger.warn("Failed to access a notebook.", e);
         }
-    }
-
-    protected List<OnenoteSection> getSections(final INotebookRequestBuilder builder) {
-        IOnenoteSectionCollectionPage page = builder.sections().buildRequest().get();
-        final List<OnenoteSection> sections = new ArrayList<>(page.getCurrentPage());
-        while (page.getNextPage() != null) {
-            page = page.getNextPage().buildRequest().get();
-            sections.addAll(page.getCurrentPage());
-        }
-        return sections;
-    }
-
-    protected List<OnenotePage> getPages(final IOnenoteSectionRequestBuilder builder) {
-        IOnenotePageCollectionPage page = builder.pages().buildRequest().get();
-        final List<OnenotePage> pages = new ArrayList<>(page.getCurrentPage());
-        while (page.getNextPage() != null) {
-            page = page.getNextPage().buildRequest().get();
-            pages.addAll(page.getCurrentPage());
-        }
-        return pages;
-    }
-
-    protected String getNotebookContents(final IOnenoteRequestBuilder builder, final Notebook notebook) {
-        final List<OnenoteSection> sections = getSections(builder.notebooks(notebook.id));
-        Collections.reverse(sections);
-        return sections.stream().map(section -> getSectionContents(builder, section)).collect(Collectors.joining("\n"));
-    }
-
-    protected String getSectionContents(final IOnenoteRequestBuilder builder, final OnenoteSection section) {
-        final StringBuilder sb = new StringBuilder();
-        sb.append(section.displayName).append('\n');
-        final List<OnenotePage> pages = getPages(builder.sections(section.id));
-        Collections.reverse(pages);
-        sb.append(pages.stream().map(page -> getPageContents(builder, page)).collect(Collectors.joining("\n")));
-        return sb.toString();
-    }
-
-    protected String getPageContents(final IOnenoteRequestBuilder builder, final OnenotePage page) {
-        final StringBuilder sb = new StringBuilder();
-        sb.append(page.title).append('\n');
-        try (final InputStream in = builder.pages(page.id).content().buildRequest().get()) {
-            final TikaExtractor extractor = ComponentUtil.getComponent("tikaExtractor");
-            sb.append(extractor.getText(in, null).getContent());
-        } catch (final IOException e) {
-            logger.warn("Failed to get contents of Page: " + page.title, e);
-        }
-        return sb.toString();
     }
 
 }

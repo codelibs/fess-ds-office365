@@ -21,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
 import org.codelibs.core.lang.StringUtil;
@@ -126,8 +127,6 @@ public class OneDriveDataStore extends Office365DataStore {
                     CLIENT_SECRET_PARAM + "' is required");
         }
 
-        final String accessToken = getAccessToken(tenant, clientId, clientSecret);
-
         final Map<String, Object> configMap = new HashMap<>();
         configMap.put(MAX_SIZE, getMaxSize(paramMap));
         configMap.put(IGNORE_FOLDER, isIgnoreFolder(paramMap));
@@ -137,8 +136,7 @@ public class OneDriveDataStore extends Office365DataStore {
             logger.debug("configMap: {}", configMap);
         }
 
-        final IGraphServiceClient client = getClient(accessToken);
-        try {
+        try (final Office365Client client = new Office365Client(tenant, clientId, clientSecret, getAccessTimeout(paramMap))) {
             if (isSharedDocumentsDriveCrawler(paramMap)) {
                 if (logger.isDebugEnabled()) {
                     logger.debug("crawling shared documents drive.");
@@ -160,8 +158,6 @@ public class OneDriveDataStore extends Office365DataStore {
                 configMap.put(CURRENT_CRAWLER, CRAWLER_TYPE_GROUP);
                 storeGroupsDrive(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client);
             }
-        } finally {
-            client.shutdown();
         }
     }
 
@@ -202,7 +198,7 @@ public class OneDriveDataStore extends Office365DataStore {
         final String value = paramMap.get(MAX_SIZE);
         try {
             return StringUtil.isNotBlank(value) ? Long.parseLong(value) : DEFAULT_MAX_SIZE;
-        } catch (NumberFormatException e) {
+        } catch (final NumberFormatException e) {
             return DEFAULT_MAX_SIZE;
         }
     }
@@ -214,53 +210,52 @@ public class OneDriveDataStore extends Office365DataStore {
 
     protected void storeSharedDocumentsDrive(final DataConfig dataConfig, final IndexUpdateCallback callback,
             final Map<String, Object> configMap, final Map<String, String> paramMap, final Map<String, String> scriptMap,
-            final Map<String, Object> defaultDataMap, final IGraphServiceClient client) {
+            final Map<String, Object> defaultDataMap, final Office365Client client) {
         try {
-            getDriveItemsInDrive(client.drive(), //
-                    item -> processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client.drive(), item,
-                            null));
-        } catch (Exception e) {
+            getDriveItemsInDrive(client, c -> c.drive(), item -> processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap,
+                    defaultDataMap, client, c -> c.drive(), item, null));
+        } catch (final Exception e) {
             logger.warn("Failed to process shared documents drive.", e);
         }
     }
 
     protected void storeUsersDrive(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, Object> configMap,
             final Map<String, String> paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
-            final IGraphServiceClient client) {
+            final Office365Client client) {
         try {
             getLicensedUsers(client, user -> {
                 final List<String> roles = getUserRoles(user);
                 try {
-                    getDriveItemsInDrive(client.users(user.id).drive(), //
-                            item -> processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap,
-                                    client.users(user.id).drive(), item, roles));
+                    getDriveItemsInDrive(client, c -> c.users(user.id).drive(), item -> processDriveItem(dataConfig, callback, configMap,
+                            paramMap, scriptMap, defaultDataMap, client, c -> c.users(user.id).drive(), item, roles));
                 } catch (final GraphServiceException e) {
                     logger.warn("Failed to store " + user.displayName + "'s Drive, ", e);
                 }
             });
-        } catch (Exception e) {
+        } catch (final Exception e) {
             logger.warn("Failed to process user drive.", e);
         }
     }
 
     protected void storeGroupsDrive(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, Object> configMap,
             final Map<String, String> paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
-            final IGraphServiceClient client) {
+            final Office365Client client) {
         try {
             getOffice365Groups(client, group -> {
                 final List<String> roles = getGroupRoles(group);
-                getDriveItemsInDrive(client.groups(group.id).drive(), //
-                        item -> processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap,
-                                client.groups(group.id).drive(), item, roles));
+                getDriveItemsInDrive(client, c -> c.groups(group.id).drive(), //
+                        item -> processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client,
+                                c -> c.groups(group.id).drive(), item, roles));
             });
-        } catch (Exception e) {
+        } catch (final Exception e) {
             logger.warn("Failed to process group drive.", e);
         }
     }
 
     protected void processDriveItem(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, Object> configMap,
             final Map<String, String> paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
-            final IDriveRequestBuilder builder, final DriveItem item, final List<String> roles) {
+            final Office365Client client, final Function<IGraphServiceClient, IDriveRequestBuilder> builder, final DriveItem item,
+            final List<String> roles) {
         final String mimetype;
         final Hashes hashes;
         if (item.file != null) {
@@ -303,7 +298,7 @@ public class OneDriveDataStore extends Office365DataStore {
             final String filetype = ComponentUtil.getFileTypeHelper().get(mimetype);
             filesMap.put(FILES_NAME, item.name);
             filesMap.put(FILES_DESCRIPTION, item.description != null ? item.description : StringUtil.EMPTY);
-            filesMap.put(FILES_CONTENTS, getDriveItemContents(builder, item, supportedMimeTypes));
+            filesMap.put(FILES_CONTENTS, getDriveItemContents(client, builder, item, supportedMimeTypes));
             filesMap.put(FILES_MIMETYPE, mimetype);
             filesMap.put(FILES_FILETYPE, filetype);
             filesMap.put(FILES_CREATED, item.createdDateTime.getTime());
@@ -403,11 +398,12 @@ public class OneDriveDataStore extends Office365DataStore {
         }
     }
 
-    protected String getDriveItemContents(final IDriveRequestBuilder builder, final DriveItem item, final String[] supportedMimeTypes) {
+    protected String getDriveItemContents(final Office365Client client, final Function<IGraphServiceClient, IDriveRequestBuilder> builder,
+            final DriveItem item, final String[] supportedMimeTypes) {
         if (item.file != null) {
             final String mimeType = item.file.mimeType;
             if (Stream.of(supportedMimeTypes).anyMatch(s -> mimeType.matches(s))) {
-                try (final InputStream in = builder.items(item.id).content().buildRequest().get()) {
+                try (final InputStream in = client.getContent(builder, item.id)) {
                     final TikaExtractor extractor = ComponentUtil.getComponent(extractorName);
                     return extractor.getText(in, null).getContent();
                 } catch (final Exception e) {
@@ -418,31 +414,31 @@ public class OneDriveDataStore extends Office365DataStore {
         return StringUtil.EMPTY;
     }
 
-    protected void getDriveItemsInDrive(final IDriveRequestBuilder builder, final Consumer<DriveItem> consumer) {
-        getDriveItemChildren(builder, consumer, null);
+    protected void getDriveItemsInDrive(final Office365Client client, final Function<IGraphServiceClient, IDriveRequestBuilder> builder,
+            final Consumer<DriveItem> consumer) {
+        getDriveItemChildren(client, builder, consumer, null);
     }
 
-    protected void getDriveItemChildren(final IDriveRequestBuilder builder, final Consumer<DriveItem> consumer, final DriveItem root) {
+    protected void getDriveItemChildren(final Office365Client client, final Function<IGraphServiceClient, IDriveRequestBuilder> builder,
+            final Consumer<DriveItem> consumer, final DriveItem root) {
         IDriveItemCollectionPage page;
         try {
-            if (root == null) {
-                page = builder.root().children().buildRequest().get();
-            } else {
+            if (root != null) {
                 consumer.accept(root);
                 if (root.folder == null) {
                     return;
                 }
-                page = builder.items(root.id).children().buildRequest().get();
             }
+            page = client.getItemPage(builder, root != null ? root.id : null);
             if (logger.isDebugEnabled()) {
                 logger.debug("crawling item: {}", page.getRawObject());
             }
-            page.getCurrentPage().forEach(i -> getDriveItemChildren(builder, consumer, i));
+            page.getCurrentPage().forEach(i -> getDriveItemChildren(client, builder, consumer, i));
             while (page.getNextPage() != null) {
                 try {
-                    page = page.getNextPage().buildRequest().get();
-                    page.getCurrentPage().forEach(i -> getDriveItemChildren(builder, consumer, i));
-                } catch (Exception e) {
+                    page = client.getNextItemPage(page);
+                    page.getCurrentPage().forEach(i -> getDriveItemChildren(client, builder, consumer, i));
+                } catch (final Exception e) {
                     if (logger.isDebugEnabled()) {
                         logger.debug("Failed to process a next page.", e);
                     }
@@ -459,7 +455,7 @@ public class OneDriveDataStore extends Office365DataStore {
         }
     }
 
-    public void setExtractorName(String extractorName) {
+    public void setExtractorName(final String extractorName) {
         this.extractorName = extractorName;
     }
 
