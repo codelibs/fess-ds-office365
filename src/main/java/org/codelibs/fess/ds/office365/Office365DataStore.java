@@ -38,6 +38,7 @@ public abstract class Office365DataStore extends AbstractDataStore {
     protected static final String CLIENT_ID_PARAM = "client_id";
     protected static final String CLIENT_SECRET_PARAM = "client_secret";
     protected static final String ACCESS_TIMEOUT = "access_timeout";
+    protected static final String ACCESS_TOKEN = "access_token";
 
     protected long accessTimeout = 30 * 1000L;
 
@@ -51,6 +52,10 @@ public abstract class Office365DataStore extends AbstractDataStore {
 
     protected String getTenant(final Map<String, String> paramMap) {
         return paramMap.getOrDefault(TENANT_PARAM, StringUtil.EMPTY);
+    }
+
+    protected String getAccessToken(final Map<String, String> paramMap) {
+        return paramMap.getOrDefault(ACCESS_TOKEN, StringUtil.EMPTY);
     }
 
     protected long getAccessTimeout(final Map<String, String> paramMap) {

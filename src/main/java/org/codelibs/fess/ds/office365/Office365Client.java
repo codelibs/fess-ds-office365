@@ -45,7 +45,9 @@ import com.microsoft.graph.requests.extensions.IUserCollectionPage;
 public class Office365Client implements Closeable {
     private static final Logger logger = LoggerFactory.getLogger(Office365Client.class);
 
-    protected IGraphServiceClient client;
+    protected static final String INVALID_AUTHENTICATION_TOKEN = "InvalidAuthenticationToken";
+
+    protected volatile IGraphServiceClient client;
 
     protected final String tenant;
 
@@ -60,10 +62,28 @@ public class Office365Client implements Closeable {
         this.clientId = clientId;
         this.clientSecret = clientSecret;
         this.accessTimeout = accessTimeout;
-        connect();
+        connect(getAccessToken());
     }
 
-    protected void connect() {
+    protected void reconnect() {
+        if (logger.isDebugEnabled()) {
+            logger.debug("Recreating a client.");
+        }
+        final IGraphServiceClient oldClient = client;
+        try {
+            connect(getAccessToken());
+        } finally {
+            if (oldClient != null) {
+                try {
+                    oldClient.shutdown();
+                } catch (final Exception e) {
+                    // ignore
+                }
+            }
+        }
+    }
+
+    protected String getAccessToken() {
         final ExecutorService executorService = Executors.newFixedThreadPool(1);
         try {
             final AuthenticationContext context =
@@ -71,8 +91,22 @@ public class Office365Client implements Closeable {
             final AuthenticationResult result =
                     context.acquireToken("https://graph.microsoft.com", new ClientCredential(clientId, clientSecret), null)
                             .get(accessTimeout, TimeUnit.MILLISECONDS);
-            final String accessToken = result.getAccessToken();
+            if (logger.isDebugEnabled()) {
+                logger.debug("Access Token: " + result.getAccessToken());
+            }
+            return result.getAccessToken();
+        } catch (final Exception e) {
+            throw new DataStoreException("Failed to get an access token.", e);
+        } finally {
+            executorService.shutdown();
+        }
+    }
 
+    public void connect(final String accessToken) {
+        if (logger.isDebugEnabled()) {
+            logger.debug("Connecting with " + accessToken);
+        }
+        try {
             client = GraphServiceClient.builder() //
                     .authenticationProvider(request -> request.addHeader("Authorization", "Bearer " + accessToken)) //
                     .logger(new DefaultLogger() {
@@ -84,14 +118,16 @@ public class Office365Client implements Closeable {
                         }
 
                         @Override
-                        public void logError(final String message, final Throwable throwable) {
-                            logger.error(message, throwable);
+                        public void logError(final String message, final Throwable t) {
+                            if (t instanceof GraphServiceException && expired((GraphServiceException) t)) {
+                                logger.debug(message, t);
+                            } else {
+                                logger.error(message, t);
+                            }
                         }
                     }).buildClient();
         } catch (final Exception e) {
-            throw new DataStoreException("Failed to get an access token.", e);
-        } finally {
-            executorService.shutdown();
+            throw new DataStoreException("Failed to create a client.", e);
         }
     }
 
@@ -106,7 +142,8 @@ public class Office365Client implements Closeable {
         try {
             return builder.apply(client).items(id).content().buildRequest().get();
         } catch (final GraphServiceException e) {
-            if (isValidToken(e)) {
+            if (expired(e)) {
+                reconnect();
                 return getContent(builder, id);
             }
             throw e;
@@ -121,7 +158,8 @@ public class Office365Client implements Closeable {
                 return builder.apply(client).items(id).children().buildRequest().get();
             }
         } catch (final GraphServiceException e) {
-            if (isValidToken(e)) {
+            if (expired(e)) {
+                reconnect();
                 return getItemPage(builder, id);
             }
             throw e;
@@ -133,7 +171,8 @@ public class Office365Client implements Closeable {
         try {
             return client.users(userId).buildRequest(options).get();
         } catch (final GraphServiceException e) {
-            if (isValidToken(e)) {
+            if (expired(e)) {
+                reconnect();
                 return getUser(userId, options);
             }
             throw e;
@@ -144,7 +183,8 @@ public class Office365Client implements Closeable {
         try {
             return client.users().buildRequest(options).get();
         } catch (final GraphServiceException e) {
-            if (isValidToken(e)) {
+            if (expired(e)) {
+                reconnect();
                 return getUserPage(options);
             }
             throw e;
@@ -155,7 +195,8 @@ public class Office365Client implements Closeable {
         try {
             return client.groups().buildRequest(options).get();
         } catch (final GraphServiceException e) {
-            if (isValidToken(e)) {
+            if (expired(e)) {
+                reconnect();
                 return getGroupPage(options);
             }
             throw e;
@@ -166,7 +207,8 @@ public class Office365Client implements Closeable {
         try {
             return page.getNextPage().buildRequest().get();
         } catch (final GraphServiceException e) {
-            if (isValidToken(e)) {
+            if (expired(e)) {
+                reconnect();
                 return getNextItemPage(page);
             }
             throw e;
@@ -177,7 +219,8 @@ public class Office365Client implements Closeable {
         try {
             return page.getNextPage().buildRequest().get();
         } catch (final GraphServiceException e) {
-            if (isValidToken(e)) {
+            if (expired(e)) {
+                reconnect();
                 return getNextUserPage(page);
             }
             throw e;
@@ -188,7 +231,8 @@ public class Office365Client implements Closeable {
         try {
             return page.getNextPage().buildRequest().get();
         } catch (final GraphServiceException e) {
-            if (isValidToken(e)) {
+            if (expired(e)) {
+                reconnect();
                 return getNextGroupPage(page);
             }
             throw e;
@@ -199,7 +243,8 @@ public class Office365Client implements Closeable {
         try {
             return builder.apply(client).notebooks().buildRequest().get();
         } catch (final GraphServiceException e) {
-            if (isValidToken(e)) {
+            if (expired(e)) {
+                reconnect();
                 return getNotebookPage(builder);
             }
             throw e;
@@ -253,7 +298,8 @@ public class Office365Client implements Closeable {
             Collections.reverse(sections);
             return sections.stream().map(section -> getSectionContents(builder.apply(client), section)).collect(Collectors.joining("\n"));
         } catch (final GraphServiceException e) {
-            if (isValidToken(e)) {
+            if (expired(e)) {
+                reconnect();
                 return getNotebookContent(builder, id);
             }
             throw e;
@@ -264,7 +310,8 @@ public class Office365Client implements Closeable {
         try {
             return page.getNextPage().buildRequest().get();
         } catch (final GraphServiceException e) {
-            if (isValidToken(e)) {
+            if (expired(e)) {
+                reconnect();
                 return getNextNotebookPage(page);
             }
             throw e;
@@ -275,17 +322,18 @@ public class Office365Client implements Closeable {
         try {
             return client.sites(id != null ? id : "root").buildRequest().get();
         } catch (final GraphServiceException e) {
-            if (isValidToken(e)) {
+            if (expired(e)) {
+                reconnect();
                 return getSite(id);
             }
             throw e;
         }
     }
 
-    protected boolean isValidToken(final GraphServiceException e) {
+    protected boolean expired(final GraphServiceException e) {
         if (logger.isDebugEnabled()) {
             logger.debug("Failed to process a request.", e);
         }
-        return "InvalidAuthenticationToken".equals(e.getServiceError().code);
+        return INVALID_AUTHENTICATION_TOKEN.equals(e.getServiceError().code);
     }
 }

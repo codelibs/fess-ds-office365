@@ -137,6 +137,12 @@ public class OneDriveDataStore extends Office365DataStore {
         }
 
         try (final Office365Client client = new Office365Client(tenant, clientId, clientSecret, getAccessTimeout(paramMap))) {
+            // debug
+            final String accessToken = getAccessToken(paramMap);
+            if (StringUtil.isNotBlank(accessToken)) {
+                client.connect(accessToken);
+            }
+
             if (isSharedDocumentsDriveCrawler(paramMap)) {
                 if (logger.isDebugEnabled()) {
                     logger.debug("crawling shared documents drive.");

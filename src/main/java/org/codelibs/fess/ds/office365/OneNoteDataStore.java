@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+import org.codelibs.core.lang.StringUtil;
 import org.codelibs.fess.Constants;
 import org.codelibs.fess.app.service.FailureUrlService;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
@@ -76,6 +77,12 @@ public class OneNoteDataStore extends Office365DataStore {
         }
 
         try (final Office365Client client = new Office365Client(tenant, clientId, clientSecret, getAccessTimeout(paramMap))) {
+            // debug
+            final String accessToken = getAccessToken(paramMap);
+            if (StringUtil.isNotBlank(accessToken)) {
+                client.connect(accessToken);
+            }
+
             if (isSiteNoteCrawler(paramMap)) {
                 if (logger.isDebugEnabled()) {
                     logger.debug("crawling site notes.");
@@ -97,15 +104,15 @@ public class OneNoteDataStore extends Office365DataStore {
         }
     }
 
-    private boolean isGroupNoteCrawler(final Map<String, String> paramMap) {
+    protected boolean isGroupNoteCrawler(final Map<String, String> paramMap) {
         return paramMap.getOrDefault("group_note_crawler", Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
     }
 
-    private boolean isUserNoteCrawler(final Map<String, String> paramMap) {
+    protected boolean isUserNoteCrawler(final Map<String, String> paramMap) {
         return paramMap.getOrDefault("user_note_crawler", Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
     }
 
-    private boolean isSiteNoteCrawler(final Map<String, String> paramMap) {
+    protected boolean isSiteNoteCrawler(final Map<String, String> paramMap) {
         return paramMap.getOrDefault("site_note_crawler", Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
     }
 
