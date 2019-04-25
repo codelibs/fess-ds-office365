@@ -43,6 +43,7 @@ import org.slf4j.LoggerFactory;
 
 import com.microsoft.graph.core.ClientException;
 import com.microsoft.graph.http.GraphServiceException;
+import com.microsoft.graph.models.extensions.Drive;
 import com.microsoft.graph.models.extensions.DriveItem;
 import com.microsoft.graph.models.extensions.Hashes;
 import com.microsoft.graph.models.extensions.IGraphServiceClient;
@@ -59,6 +60,8 @@ public class OneDriveDataStore extends Office365DataStore {
     protected static final String CRAWLER_TYPE_GROUP = "group";
     protected static final String CRAWLER_TYPE_USER = "user";
     protected static final String CRAWLER_TYPE_SHARED = "shared";
+    protected static final String CRAWLER_TYPE_DRIVE = "drive";
+    protected static final String DRIVE_INFO = "drive_info";
 
     // parameters
     protected static final String MAX_SIZE = "max_size";
@@ -67,6 +70,7 @@ public class OneDriveDataStore extends Office365DataStore {
     protected static final String INCLUDE_PATTERN = "include_pattern";
     protected static final String EXCLUDE_PATTERN = "exclude_pattern";
     protected static final String URL_FILTER = "url_filter";
+    protected static final String DRIVE_ID = "drive_id";
 
     // scripts
     protected static final String FILES = "files";
@@ -143,13 +147,25 @@ public class OneDriveDataStore extends Office365DataStore {
                 client.connect(accessToken);
             }
 
+            final String driveId = paramMap.get(DRIVE_ID);
+            if (StringUtil.isNotBlank(driveId)) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("crawling doclument library drive: " + driveId);
+                }
+                configMap.put(CURRENT_CRAWLER, CRAWLER_TYPE_DRIVE);
+                configMap.put(DRIVE_INFO, client.getDrive(driveId));
+                storeSharedDocumentsDrive(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client, driveId);
+                configMap.remove(DRIVE_INFO);
+            }
+
             if (isSharedDocumentsDriveCrawler(paramMap)) {
                 if (logger.isDebugEnabled()) {
                     logger.debug("crawling shared documents drive.");
                 }
                 configMap.put(CURRENT_CRAWLER, CRAWLER_TYPE_SHARED);
-                storeSharedDocumentsDrive(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client);
+                storeSharedDocumentsDrive(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client, null);
             }
+
             if (isUserDriveCrawler(paramMap)) {
                 if (logger.isDebugEnabled()) {
                     logger.debug("crawling user drive.");
@@ -157,6 +173,7 @@ public class OneDriveDataStore extends Office365DataStore {
                 configMap.put(CURRENT_CRAWLER, CRAWLER_TYPE_USER);
                 storeUsersDrive(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client);
             }
+
             if (isGroupDriveCrawler(paramMap)) {
                 if (logger.isDebugEnabled()) {
                     logger.debug("crawling group drive.");
@@ -216,10 +233,11 @@ public class OneDriveDataStore extends Office365DataStore {
 
     protected void storeSharedDocumentsDrive(final DataConfig dataConfig, final IndexUpdateCallback callback,
             final Map<String, Object> configMap, final Map<String, String> paramMap, final Map<String, String> scriptMap,
-            final Map<String, Object> defaultDataMap, final Office365Client client) {
+            final Map<String, Object> defaultDataMap, final Office365Client client, final String driveId) {
         try {
-            getDriveItemsInDrive(client, c -> c.drive(), item -> processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap,
-                    defaultDataMap, client, c -> c.drive(), item, null));
+            getDriveItemsInDrive(client, c -> driveId != null ? c.drives(driveId) : c.drive(),
+                    item -> processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client,
+                            c -> driveId != null ? c.drives(driveId) : c.drive(), item, null));
         } catch (final Exception e) {
             logger.warn("Failed to process shared documents drive.", e);
         }
@@ -399,6 +417,9 @@ public class OneDriveDataStore extends Office365DataStore {
         }
         if (CRAWLER_TYPE_SHARED.equals(configMap.get(CURRENT_CRAWLER)) || CRAWLER_TYPE_GROUP.equals(configMap.get(CURRENT_CRAWLER))) {
             return baseUrl + "/Shared%20Documents" + parentPath + "/" + item.name;
+        } else if (CRAWLER_TYPE_DRIVE.equals(configMap.get(CURRENT_CRAWLER))) {
+            final Drive drive = (Drive) configMap.get(DRIVE_INFO);
+            return baseUrl + "/" + drive.name + parentPath + "/" + item.name;
         } else {
             return baseUrl + "/Documents" + parentPath + "/" + item.name;
         }
@@ -436,9 +457,6 @@ public class OneDriveDataStore extends Office365DataStore {
                 }
             }
             page = client.getItemPage(builder, root != null ? root.id : null);
-            if (logger.isDebugEnabled()) {
-                logger.debug("crawling item: {}", page.getRawObject());
-            }
             page.getCurrentPage().forEach(i -> getDriveItemChildren(client, builder, consumer, i));
             while (page.getNextPage() != null) {
                 try {

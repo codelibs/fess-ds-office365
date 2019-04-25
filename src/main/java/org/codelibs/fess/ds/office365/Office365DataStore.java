@@ -25,9 +25,11 @@ import org.codelibs.core.lang.StringUtil;
 import org.codelibs.fess.ds.AbstractDataStore;
 import org.codelibs.fess.util.ComponentUtil;
 
+import com.microsoft.graph.models.extensions.Drive;
 import com.microsoft.graph.models.extensions.Group;
 import com.microsoft.graph.models.extensions.User;
 import com.microsoft.graph.options.QueryOption;
+import com.microsoft.graph.requests.extensions.IDriveCollectionPage;
 import com.microsoft.graph.requests.extensions.IGroupCollectionPage;
 import com.microsoft.graph.requests.extensions.IUserCollectionPage;
 
@@ -70,13 +72,10 @@ public abstract class Office365DataStore extends AbstractDataStore {
 
     protected void getLicensedUsers(final Office365Client client, final Consumer<User> consumer) {
         IUserCollectionPage page = client.getUserPage(Collections.emptyList());
+        page.getCurrentPage().stream().filter(u -> isLicensedUser(client, u.id)).forEach(u -> consumer.accept(u));
         while (page.getNextPage() != null) {
             page = client.getNextUserPage(page);
-            page.getCurrentPage().forEach(u -> {
-                if (isLicensedUser(client, u.id)) {
-                    consumer.accept(u);
-                }
-            });
+            page.getCurrentPage().stream().filter(u -> isLicensedUser(client, u.id)).forEach(u -> consumer.accept(u));
         }
     }
 
@@ -91,6 +90,7 @@ public abstract class Office365DataStore extends AbstractDataStore {
 
     protected void getGroups(final Office365Client client, final List<QueryOption> options, final Consumer<Group> consumer) {
         IGroupCollectionPage page = client.getGroupPage(options);
+        page.getCurrentPage().stream().forEach(g -> consumer.accept(g));
         while (page.getNextPage() != null) {
             page = client.getNextGroupPage(page);
             page.getCurrentPage().forEach(g -> consumer.accept(g));
@@ -105,8 +105,16 @@ public abstract class Office365DataStore extends AbstractDataStore {
         return Collections.singletonList(ComponentUtil.getSystemHelper().getSearchRoleByGroup(group.id));
     }
 
+    protected void getDrives(final Office365Client client, final Consumer<Drive> consumer) {
+        IDriveCollectionPage page = client.getDrives();
+        page.getCurrentPage().stream().forEach(d -> consumer.accept(d));
+        while (page.getNextPage() != null) {
+            page = client.getNextDrivePage(page);
+            page.getCurrentPage().stream().forEach(d -> consumer.accept(d));
+        }
+    }
+
     public void setAccessTimeout(final long accessTimeout) {
         this.accessTimeout = accessTimeout;
     }
-
 }

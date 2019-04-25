@@ -25,8 +25,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
+import org.codelibs.core.lang.StringUtil;
 import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
 import org.codelibs.fess.exception.DataStoreException;
 import org.codelibs.fess.util.ComponentUtil;
@@ -39,6 +41,7 @@ import com.microsoft.aad.adal4j.ClientCredential;
 import com.microsoft.graph.http.GraphServiceException;
 import com.microsoft.graph.logger.DefaultLogger;
 import com.microsoft.graph.logger.LoggerLevel;
+import com.microsoft.graph.models.extensions.Drive;
 import com.microsoft.graph.models.extensions.IGraphServiceClient;
 import com.microsoft.graph.models.extensions.OnenotePage;
 import com.microsoft.graph.models.extensions.OnenoteSection;
@@ -46,6 +49,7 @@ import com.microsoft.graph.models.extensions.Site;
 import com.microsoft.graph.models.extensions.User;
 import com.microsoft.graph.options.Option;
 import com.microsoft.graph.requests.extensions.GraphServiceClient;
+import com.microsoft.graph.requests.extensions.IDriveCollectionPage;
 import com.microsoft.graph.requests.extensions.IDriveItemCollectionPage;
 import com.microsoft.graph.requests.extensions.IDriveRequestBuilder;
 import com.microsoft.graph.requests.extensions.IGroupCollectionPage;
@@ -55,6 +59,7 @@ import com.microsoft.graph.requests.extensions.IOnenotePageCollectionPage;
 import com.microsoft.graph.requests.extensions.IOnenoteRequestBuilder;
 import com.microsoft.graph.requests.extensions.IOnenoteSectionCollectionPage;
 import com.microsoft.graph.requests.extensions.IOnenoteSectionRequestBuilder;
+import com.microsoft.graph.requests.extensions.ISiteCollectionPage;
 import com.microsoft.graph.requests.extensions.IUserCollectionPage;
 
 public class Office365Client implements Closeable {
@@ -154,28 +159,37 @@ public class Office365Client implements Closeable {
     }
 
     public InputStream getContent(final Function<IGraphServiceClient, IDriveRequestBuilder> builder, final String id) {
+        final Supplier<InputStream> supplier = () -> builder.apply(client).items(id).content().buildRequest().get();
         try {
-            return builder.apply(client).items(id).content().buildRequest().get();
+            return supplier.get();
         } catch (final GraphServiceException e) {
             if (expired(e)) {
                 reconnect();
-                return getContent(builder, id);
+                return supplier.get();
             }
             throw e;
         }
     }
 
     public IDriveItemCollectionPage getItemPage(final Function<IGraphServiceClient, IDriveRequestBuilder> builder, final String id) {
-        try {
+        final Supplier<IDriveItemCollectionPage> supplier = () -> {
+            final IDriveItemCollectionPage value;
             if (id == null) {
-                return builder.apply(client).root().children().buildRequest().get();
+                value = builder.apply(client).root().children().buildRequest().get();
             } else {
-                return builder.apply(client).items(id).children().buildRequest().get();
+                value = builder.apply(client).items(id).children().buildRequest().get();
             }
+            if (logger.isDebugEnabled()) {
+                logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
+            }
+            return value;
+        };
+        try {
+            return supplier.get();
         } catch (final GraphServiceException e) {
             if (expired(e)) {
                 reconnect();
-                return getItemPage(builder, id);
+                return supplier.get();
             }
             throw e;
         }
@@ -183,84 +197,133 @@ public class Office365Client implements Closeable {
     }
 
     public User getUser(final String userId, final List<? extends Option> options) {
+        final Supplier<User> supplier = () -> {
+            final User value = client.users(userId).buildRequest(options).get();
+            if (logger.isDebugEnabled()) {
+                logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
+            }
+            return value;
+        };
         try {
-            return client.users(userId).buildRequest(options).get();
+            return supplier.get();
         } catch (final GraphServiceException e) {
             if (expired(e)) {
                 reconnect();
-                return getUser(userId, options);
+                return supplier.get();
             }
             throw e;
         }
     }
 
     public IUserCollectionPage getUserPage(final List<? extends Option> options) {
+        final Supplier<IUserCollectionPage> supplier = () -> {
+            final IUserCollectionPage value = client.users().buildRequest(options).get();
+            if (logger.isDebugEnabled()) {
+                logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
+            }
+            return value;
+        };
         try {
-            return client.users().buildRequest(options).get();
+            return supplier.get();
         } catch (final GraphServiceException e) {
             if (expired(e)) {
                 reconnect();
-                return getUserPage(options);
+                return supplier.get();
             }
             throw e;
         }
     }
 
     public IGroupCollectionPage getGroupPage(final List<? extends Option> options) {
+        final Supplier<IGroupCollectionPage> supplier = () -> {
+            final IGroupCollectionPage value = client.groups().buildRequest(options).get();
+            if (logger.isDebugEnabled()) {
+                logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
+            }
+            return value;
+        };
         try {
-            return client.groups().buildRequest(options).get();
+            return supplier.get();
         } catch (final GraphServiceException e) {
             if (expired(e)) {
                 reconnect();
-                return getGroupPage(options);
+                return supplier.get();
             }
             throw e;
         }
     }
 
     public IDriveItemCollectionPage getNextItemPage(final IDriveItemCollectionPage page) {
+        final Supplier<IDriveItemCollectionPage> supplier = () -> {
+            final IDriveItemCollectionPage value = page.getNextPage().buildRequest().get();
+            if (logger.isDebugEnabled()) {
+                logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
+            }
+            return value;
+        };
         try {
-            return page.getNextPage().buildRequest().get();
+            return supplier.get();
         } catch (final GraphServiceException e) {
             if (expired(e)) {
                 reconnect();
-                return getNextItemPage(page);
+                return supplier.get();
             }
             throw e;
         }
     }
 
     public IUserCollectionPage getNextUserPage(final IUserCollectionPage page) {
+        final Supplier<IUserCollectionPage> supplier = () -> {
+            final IUserCollectionPage value = page.getNextPage().buildRequest().get();
+            if (logger.isDebugEnabled()) {
+                logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
+            }
+            return value;
+        };
         try {
-            return page.getNextPage().buildRequest().get();
+            return supplier.get();
         } catch (final GraphServiceException e) {
             if (expired(e)) {
                 reconnect();
-                return getNextUserPage(page);
+                return supplier.get();
             }
             throw e;
         }
     }
 
     public IGroupCollectionPage getNextGroupPage(final IGroupCollectionPage page) {
+        final Supplier<IGroupCollectionPage> supplier = () -> {
+            final IGroupCollectionPage value = page.getNextPage().buildRequest().get();
+            if (logger.isDebugEnabled()) {
+                logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
+            }
+            return value;
+        };
         try {
-            return page.getNextPage().buildRequest().get();
+            return supplier.get();
         } catch (final GraphServiceException e) {
             if (expired(e)) {
                 reconnect();
-                return getNextGroupPage(page);
+                return supplier.get();
             }
             throw e;
         }
     }
 
     public INotebookCollectionPage getNotebookPage(final Function<IGraphServiceClient, IOnenoteRequestBuilder> builder) {
+        final Supplier<INotebookCollectionPage> supplier = () -> {
+            final INotebookCollectionPage value = builder.apply(client).notebooks().buildRequest().get();
+            if (logger.isDebugEnabled()) {
+                logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
+            }
+            return value;
+        };
         try {
-            return builder.apply(client).notebooks().buildRequest().get();
+            return supplier.get();
         } catch (final GraphServiceException e) {
             if (expired(e)) {
                 reconnect();
-                return getNotebookPage(builder);
+                return supplier.get();
             }
             throw e;
         }
@@ -308,38 +371,55 @@ public class Office365Client implements Closeable {
     }
 
     public String getNotebookContent(final Function<IGraphServiceClient, IOnenoteRequestBuilder> builder, final String id) {
-        try {
+        final Supplier<String> supplier = () -> {
             final List<OnenoteSection> sections = getSections(builder.apply(client).notebooks(id));
             Collections.reverse(sections);
             return sections.stream().map(section -> getSectionContents(builder.apply(client), section)).collect(Collectors.joining("\n"));
+        };
+        try {
+            return supplier.get();
         } catch (final GraphServiceException e) {
             if (expired(e)) {
                 reconnect();
-                return getNotebookContent(builder, id);
+                return supplier.get();
             }
             throw e;
         }
     }
 
     public INotebookCollectionPage getNextNotebookPage(final INotebookCollectionPage page) {
+        final Supplier<INotebookCollectionPage> supplier = () -> {
+            final INotebookCollectionPage value = page.getNextPage().buildRequest().get();
+            if (logger.isDebugEnabled()) {
+                logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
+            }
+            return value;
+        };
         try {
-            return page.getNextPage().buildRequest().get();
+            return supplier.get();
         } catch (final GraphServiceException e) {
             if (expired(e)) {
                 reconnect();
-                return getNextNotebookPage(page);
+                return supplier.get();
             }
             throw e;
         }
     }
 
     public Site getSite(final String id) {
+        final Supplier<Site> supplier = () -> {
+            final Site value = client.sites(StringUtil.isNotBlank(id) ? id : "root").buildRequest().get();
+            if (logger.isDebugEnabled()) {
+                logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
+            }
+            return value;
+        };
         try {
-            return client.sites(id != null ? id : "root").buildRequest().get();
+            return supplier.get();
         } catch (final GraphServiceException e) {
             if (expired(e)) {
                 reconnect();
-                return getSite(id);
+                return supplier.get();
             }
             throw e;
         }
@@ -350,5 +430,100 @@ public class Office365Client implements Closeable {
             logger.debug("Failed to process a request.", e);
         }
         return INVALID_AUTHENTICATION_TOKEN.equals(e.getServiceError().code);
+    }
+
+    public IDriveCollectionPage getDrives() {
+        final Supplier<IDriveCollectionPage> supplier = () -> {
+            final IDriveCollectionPage value = client.drives().buildRequest().get();
+            if (logger.isDebugEnabled()) {
+                logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
+            }
+            return value;
+        };
+        try {
+            return supplier.get();
+        } catch (final GraphServiceException e) {
+            if (expired(e)) {
+                reconnect();
+                return supplier.get();
+            }
+            throw e;
+        }
+    }
+
+    public IDriveCollectionPage getNextDrivePage(final IDriveCollectionPage page) {
+        final Supplier<IDriveCollectionPage> supplier = () -> {
+            final IDriveCollectionPage value = page.getNextPage().buildRequest().get();
+            if (logger.isDebugEnabled()) {
+                logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
+            }
+            return value;
+        };
+        try {
+            return supplier.get();
+        } catch (final GraphServiceException e) {
+            if (expired(e)) {
+                reconnect();
+                return supplier.get();
+            }
+            throw e;
+        }
+    }
+
+    public ISiteCollectionPage getSites() {
+        final Supplier<ISiteCollectionPage> supplier = () -> {
+            final ISiteCollectionPage value = client.sites().buildRequest().get();
+            if (logger.isDebugEnabled()) {
+                logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
+            }
+            return value;
+        };
+        try {
+            return supplier.get();
+        } catch (final GraphServiceException e) {
+            if (expired(e)) {
+                reconnect();
+                return supplier.get();
+            }
+            throw e;
+        }
+    }
+
+    public ISiteCollectionPage getNextSitePage(final ISiteCollectionPage page) {
+        final Supplier<ISiteCollectionPage> supplier = () -> {
+            final ISiteCollectionPage value = page.getNextPage().buildRequest().get();
+            if (logger.isDebugEnabled()) {
+                logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
+            }
+            return value;
+        };
+        try {
+            return supplier.get();
+        } catch (final GraphServiceException e) {
+            if (expired(e)) {
+                reconnect();
+                return supplier.get();
+            }
+            throw e;
+        }
+    }
+
+    public Drive getDrive(final String driveId) {
+        final Supplier<Drive> supplier = () -> {
+            final Drive value = client.drives(driveId).buildRequest().get();
+            if (logger.isDebugEnabled()) {
+                logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
+            }
+            return value;
+        };
+        try {
+            return supplier.get();
+        } catch (final GraphServiceException e) {
+            if (expired(e)) {
+                reconnect();
+                return supplier.get();
+            }
+            throw e;
+        }
     }
 }
