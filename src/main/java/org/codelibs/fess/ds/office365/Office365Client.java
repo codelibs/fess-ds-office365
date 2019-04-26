@@ -59,6 +59,7 @@ import com.microsoft.graph.requests.extensions.IOnenotePageCollectionPage;
 import com.microsoft.graph.requests.extensions.IOnenoteRequestBuilder;
 import com.microsoft.graph.requests.extensions.IOnenoteSectionCollectionPage;
 import com.microsoft.graph.requests.extensions.IOnenoteSectionRequestBuilder;
+import com.microsoft.graph.requests.extensions.IPermissionCollectionPage;
 import com.microsoft.graph.requests.extensions.ISiteCollectionPage;
 import com.microsoft.graph.requests.extensions.IUserCollectionPage;
 
@@ -158,8 +159,22 @@ public class Office365Client implements Closeable {
         }
     }
 
-    public InputStream getContent(final Function<IGraphServiceClient, IDriveRequestBuilder> builder, final String id) {
+    public InputStream getDriveContent(final Function<IGraphServiceClient, IDriveRequestBuilder> builder, final String id) {
         final Supplier<InputStream> supplier = () -> builder.apply(client).items(id).content().buildRequest().get();
+        try {
+            return supplier.get();
+        } catch (final GraphServiceException e) {
+            if (expired(e)) {
+                reconnect();
+                return supplier.get();
+            }
+            throw e;
+        }
+    }
+
+    public IPermissionCollectionPage getDrivePermissions(final Function<IGraphServiceClient, IDriveRequestBuilder> builder,
+            final String id) {
+        final Supplier<IPermissionCollectionPage> supplier = () -> builder.apply(client).items(id).permissions().buildRequest().get();
         try {
             return supplier.get();
         } catch (final GraphServiceException e) {
@@ -255,6 +270,9 @@ public class Office365Client implements Closeable {
 
     public IDriveItemCollectionPage getNextItemPage(final IDriveItemCollectionPage page) {
         final Supplier<IDriveItemCollectionPage> supplier = () -> {
+            if (page.getNextPage() == null) {
+                return null;
+            }
             final IDriveItemCollectionPage value = page.getNextPage().buildRequest().get();
             if (logger.isDebugEnabled()) {
                 logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
@@ -274,6 +292,9 @@ public class Office365Client implements Closeable {
 
     public IUserCollectionPage getNextUserPage(final IUserCollectionPage page) {
         final Supplier<IUserCollectionPage> supplier = () -> {
+            if (page.getNextPage() == null) {
+                return null;
+            }
             final IUserCollectionPage value = page.getNextPage().buildRequest().get();
             if (logger.isDebugEnabled()) {
                 logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
@@ -293,6 +314,9 @@ public class Office365Client implements Closeable {
 
     public IGroupCollectionPage getNextGroupPage(final IGroupCollectionPage page) {
         final Supplier<IGroupCollectionPage> supplier = () -> {
+            if (page.getNextPage() == null) {
+                return null;
+            }
             final IGroupCollectionPage value = page.getNextPage().buildRequest().get();
             if (logger.isDebugEnabled()) {
                 logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
@@ -389,6 +413,9 @@ public class Office365Client implements Closeable {
 
     public INotebookCollectionPage getNextNotebookPage(final INotebookCollectionPage page) {
         final Supplier<INotebookCollectionPage> supplier = () -> {
+            if (page.getNextPage() == null) {
+                return null;
+            }
             final INotebookCollectionPage value = page.getNextPage().buildRequest().get();
             if (logger.isDebugEnabled()) {
                 logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
@@ -453,6 +480,9 @@ public class Office365Client implements Closeable {
 
     public IDriveCollectionPage getNextDrivePage(final IDriveCollectionPage page) {
         final Supplier<IDriveCollectionPage> supplier = () -> {
+            if (page.getNextPage() == null) {
+                return null;
+            }
             final IDriveCollectionPage value = page.getNextPage().buildRequest().get();
             if (logger.isDebugEnabled()) {
                 logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
@@ -491,6 +521,9 @@ public class Office365Client implements Closeable {
 
     public ISiteCollectionPage getNextSitePage(final ISiteCollectionPage page) {
         final Supplier<ISiteCollectionPage> supplier = () -> {
+            if (page.getNextPage() == null) {
+                return null;
+            }
             final ISiteCollectionPage value = page.getNextPage().buildRequest().get();
             if (logger.isDebugEnabled()) {
                 logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
@@ -511,6 +544,28 @@ public class Office365Client implements Closeable {
     public Drive getDrive(final String driveId) {
         final Supplier<Drive> supplier = () -> {
             final Drive value = client.drives(driveId).buildRequest().get();
+            if (logger.isDebugEnabled()) {
+                logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
+            }
+            return value;
+        };
+        try {
+            return supplier.get();
+        } catch (final GraphServiceException e) {
+            if (expired(e)) {
+                reconnect();
+                return supplier.get();
+            }
+            throw e;
+        }
+    }
+
+    public IPermissionCollectionPage getNextPermissionPage(final IPermissionCollectionPage page) {
+        final Supplier<IPermissionCollectionPage> supplier = () -> {
+            if (page.getNextPage() == null) {
+                return null;
+            }
+            final IPermissionCollectionPage value = page.getNextPage().buildRequest().get();
             if (logger.isDebugEnabled()) {
                 logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
             }

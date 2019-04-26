@@ -16,6 +16,8 @@
 package org.codelibs.fess.ds.office365;
 
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,6 +39,8 @@ import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.exception.DataStoreCrawlingException;
 import org.codelibs.fess.exception.DataStoreException;
+import org.codelibs.fess.helper.PermissionHelper;
+import org.codelibs.fess.helper.SystemHelper;
 import org.codelibs.fess.util.ComponentUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,6 +53,7 @@ import com.microsoft.graph.models.extensions.Hashes;
 import com.microsoft.graph.models.extensions.IGraphServiceClient;
 import com.microsoft.graph.requests.extensions.IDriveItemCollectionPage;
 import com.microsoft.graph.requests.extensions.IDriveRequestBuilder;
+import com.microsoft.graph.requests.extensions.IPermissionCollectionPage;
 
 public class OneDriveDataStore extends Office365DataStore {
 
@@ -237,7 +242,7 @@ public class OneDriveDataStore extends Office365DataStore {
         try {
             getDriveItemsInDrive(client, c -> driveId != null ? c.drives(driveId) : c.drive(),
                     item -> processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client,
-                            c -> driveId != null ? c.drives(driveId) : c.drive(), item, null));
+                            c -> driveId != null ? c.drives(driveId) : c.drive(), item, Collections.emptyList()));
         } catch (final Exception e) {
             logger.warn("Failed to process shared documents drive.", e);
         }
@@ -248,10 +253,9 @@ public class OneDriveDataStore extends Office365DataStore {
             final Office365Client client) {
         try {
             getLicensedUsers(client, user -> {
-                final List<String> roles = getUserRoles(user);
                 try {
                     getDriveItemsInDrive(client, c -> c.users(user.id).drive(), item -> processDriveItem(dataConfig, callback, configMap,
-                            paramMap, scriptMap, defaultDataMap, client, c -> c.users(user.id).drive(), item, roles));
+                            paramMap, scriptMap, defaultDataMap, client, c -> c.users(user.id).drive(), item, getUserRoles(user)));
                 } catch (final GraphServiceException e) {
                     logger.warn("Failed to store " + user.displayName + "'s Drive, ", e);
                 }
@@ -266,10 +270,9 @@ public class OneDriveDataStore extends Office365DataStore {
             final Office365Client client) {
         try {
             getOffice365Groups(client, group -> {
-                final List<String> roles = getGroupRoles(group);
                 getDriveItemsInDrive(client, c -> c.groups(group.id).drive(), //
                         item -> processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client,
-                                c -> c.groups(group.id).drive(), item, roles));
+                                c -> c.groups(group.id).drive(), item, getGroupRoles(group)));
             });
         } catch (final Exception e) {
             logger.warn("Failed to process group drive.", e);
@@ -330,7 +333,6 @@ public class OneDriveDataStore extends Office365DataStore {
             filesMap.put(FILES_SIZE, item.size);
             filesMap.put(FILES_WEB_URL, item.webUrl);
             filesMap.put(FILES_URL, url);
-            filesMap.put(FILES_ROLES, roles);
             filesMap.put(FILES_CTAG, item.cTag);
             filesMap.put(FILES_ETAG, item.eTag);
             filesMap.put(FILES_ID, item.id);
@@ -354,6 +356,13 @@ public class OneDriveDataStore extends Office365DataStore {
             filesMap.put(FILES_SEARCH_RESULT, item.searchResult);
             filesMap.put(FILES_SPECIAL_FOLDER, item.specialFolder != null ? item.specialFolder.name : null);
             filesMap.put(FILES_VIDEO, item.video);
+
+            final List<String> permissions = getDriveItemPermissions(client, builder, item);
+            roles.forEach(permissions::add);
+            final PermissionHelper permissionHelper = ComponentUtil.getPermissionHelper();
+            StreamUtil.split(paramMap.get("default_permissions"), ",")
+                    .of(stream -> stream.filter(StringUtil::isNotBlank).map(permissionHelper::encode).forEach(permissions::add));
+            filesMap.put(FILES_ROLES, permissions);
 
             resultMap.put(FILES, filesMap);
             if (logger.isDebugEnabled()) {
@@ -399,6 +408,24 @@ public class OneDriveDataStore extends Office365DataStore {
         }
     }
 
+    protected List<String> getDriveItemPermissions(final Office365Client client,
+            final Function<IGraphServiceClient, IDriveRequestBuilder> builder, final DriveItem item) {
+        final List<String> permissions = new ArrayList<>();
+        final SystemHelper systemHelper = ComponentUtil.getSystemHelper();
+        IPermissionCollectionPage page = client.getDrivePermissions(builder, item.id);
+        while (page != null) {
+            page.getCurrentPage().forEach(p -> {
+                if (p.grantedTo != null && p.grantedTo.user != null && p.grantedTo.user.id != null) {
+                    final String id = p.grantedTo.user.id;
+                    permissions.add(systemHelper.getSearchRoleByUser(id));
+                    permissions.add(systemHelper.getSearchRoleByGroup(id));
+                }
+            });
+            page = client.getNextPermissionPage(page);
+        }
+        return permissions;
+    }
+
     protected String getUrl(final Map<String, Object> configMap, final Map<String, String> paramMap, final DriveItem item) {
         if (item.webUrl == null) {
             return null;
@@ -430,7 +457,7 @@ public class OneDriveDataStore extends Office365DataStore {
         if (item.file != null) {
             final String mimeType = item.file.mimeType;
             if (Stream.of(supportedMimeTypes).anyMatch(s -> mimeType.matches(s))) {
-                try (final InputStream in = client.getContent(builder, item.id)) {
+                try (final InputStream in = client.getDriveContent(builder, item.id)) {
                     final TikaExtractor extractor = ComponentUtil.getComponent(extractorName);
                     return extractor.getText(in, null).getContent();
                 } catch (final Exception e) {
