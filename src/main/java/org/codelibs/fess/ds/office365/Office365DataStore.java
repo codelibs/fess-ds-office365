@@ -17,11 +17,9 @@ package org.codelibs.fess.ds.office365;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 
-import org.codelibs.core.lang.StringUtil;
 import org.codelibs.fess.ds.AbstractDataStore;
 import org.codelibs.fess.util.ComponentUtil;
 
@@ -34,41 +32,6 @@ import com.microsoft.graph.requests.extensions.IGroupCollectionPage;
 import com.microsoft.graph.requests.extensions.IUserCollectionPage;
 
 public abstract class Office365DataStore extends AbstractDataStore {
-
-    // parameters
-    protected static final String TENANT_PARAM = "tenant";
-    protected static final String CLIENT_ID_PARAM = "client_id";
-    protected static final String CLIENT_SECRET_PARAM = "client_secret";
-    protected static final String ACCESS_TIMEOUT = "access_timeout";
-    protected static final String ACCESS_TOKEN = "access_token";
-
-    protected long accessTimeout = 30 * 1000L;
-
-    protected String getClientSecret(final Map<String, String> paramMap) {
-        return paramMap.getOrDefault(CLIENT_SECRET_PARAM, StringUtil.EMPTY);
-    }
-
-    protected String getClientId(final Map<String, String> paramMap) {
-        return paramMap.getOrDefault(CLIENT_ID_PARAM, StringUtil.EMPTY);
-    }
-
-    protected String getTenant(final Map<String, String> paramMap) {
-        return paramMap.getOrDefault(TENANT_PARAM, StringUtil.EMPTY);
-    }
-
-    protected String getAccessToken(final Map<String, String> paramMap) {
-        return paramMap.getOrDefault(ACCESS_TOKEN, StringUtil.EMPTY);
-    }
-
-    protected long getAccessTimeout(final Map<String, String> paramMap) {
-        long accessTimeout = 30 * 1000L;
-        try {
-            accessTimeout = Long.parseLong(paramMap.getOrDefault(ACCESS_TIMEOUT, StringUtil.EMPTY));
-        } catch (final NumberFormatException e) {
-            // ignore
-        }
-        return accessTimeout;
-    }
 
     protected void getLicensedUsers(final Office365Client client, final Consumer<User> consumer) {
         IUserCollectionPage page = client.getUserPage(Collections.emptyList());
@@ -114,7 +77,4 @@ public abstract class Office365DataStore extends AbstractDataStore {
         }
     }
 
-    public void setAccessTimeout(final long accessTimeout) {
-        this.accessTimeout = accessTimeout;
-    }
 }
