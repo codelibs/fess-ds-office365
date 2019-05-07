@@ -22,6 +22,9 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -56,7 +59,6 @@ import com.microsoft.graph.requests.extensions.IPermissionCollectionPage;
 
 public class OneDriveDataStore extends Office365DataStore {
 
-
     private static final Logger logger = LoggerFactory.getLogger(OneDriveDataStore.class);
 
     protected static final long DEFAULT_MAX_SIZE = 10000000L; // 10m
@@ -79,6 +81,9 @@ public class OneDriveDataStore extends Office365DataStore {
     protected static final String DRIVE_ID = "drive_id";
     protected static final String DEFAULT_PERMISSIONS = "default_permissions";
     protected static final String NUMBER_OF_THREADS = "number_of_threads";
+    protected static final String SHARED_DOCUMENTS_DRIVE_CRAWLER = "shared_documents_drive_crawler";
+    protected static final String USER_DRIVE_CRAWLER = "user_drive_crawler";
+    protected static final String GROUP_DRIVE_CRAWLER = "group_drive_crawler";
 
     // scripts
     protected static final String FILE = "file";
@@ -138,6 +143,8 @@ public class OneDriveDataStore extends Office365DataStore {
             logger.debug("configMap: {}", configMap);
         }
 
+        final ExecutorService executorService =
+                Executors.newFixedThreadPool(Integer.parseInt(paramMap.getOrDefault(NUMBER_OF_THREADS, "1")));
         try (final Office365Client client = createClient(paramMap)) {
             final String driveId = paramMap.get(DRIVE_ID);
             if (StringUtil.isNotBlank(driveId)) {
@@ -146,7 +153,8 @@ public class OneDriveDataStore extends Office365DataStore {
                 }
                 configMap.put(CURRENT_CRAWLER, CRAWLER_TYPE_DRIVE);
                 configMap.put(DRIVE_INFO, client.getDrive(driveId));
-                storeSharedDocumentsDrive(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client, driveId);
+                storeSharedDocumentsDrive(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, executorService, client,
+                        driveId);
                 configMap.remove(DRIVE_INFO);
             }
 
@@ -155,7 +163,8 @@ public class OneDriveDataStore extends Office365DataStore {
                     logger.debug("crawling shared documents drive.");
                 }
                 configMap.put(CURRENT_CRAWLER, CRAWLER_TYPE_SHARED);
-                storeSharedDocumentsDrive(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client, null);
+                storeSharedDocumentsDrive(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, executorService, client,
+                        null);
             }
 
             if (isUserDriveCrawler(paramMap)) {
@@ -163,7 +172,7 @@ public class OneDriveDataStore extends Office365DataStore {
                     logger.debug("crawling user drive.");
                 }
                 configMap.put(CURRENT_CRAWLER, CRAWLER_TYPE_USER);
-                storeUsersDrive(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client);
+                storeUsersDrive(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, executorService, client);
             }
 
             if (isGroupDriveCrawler(paramMap)) {
@@ -171,8 +180,15 @@ public class OneDriveDataStore extends Office365DataStore {
                     logger.debug("crawling group drive.");
                 }
                 configMap.put(CURRENT_CRAWLER, CRAWLER_TYPE_GROUP);
-                storeGroupsDrive(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client);
+                storeGroupsDrive(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, executorService, client);
             }
+            executorService.awaitTermination(60, TimeUnit.SECONDS);
+        } catch (final InterruptedException e) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Interrupted.", e);
+            }
+        } finally {
+            executorService.shutdown();
         }
     }
 
@@ -198,15 +214,15 @@ public class OneDriveDataStore extends Office365DataStore {
     }
 
     protected boolean isSharedDocumentsDriveCrawler(final Map<String, String> paramMap) {
-        return paramMap.getOrDefault("shared_documents_drive_crawler", Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+        return paramMap.getOrDefault(SHARED_DOCUMENTS_DRIVE_CRAWLER, Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
     }
 
     protected boolean isUserDriveCrawler(final Map<String, String> paramMap) {
-        return paramMap.getOrDefault("user_drive_crawler", Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+        return paramMap.getOrDefault(USER_DRIVE_CRAWLER, Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
     }
 
     protected boolean isGroupDriveCrawler(final Map<String, String> paramMap) {
-        return paramMap.getOrDefault("group_drive_crawler", Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+        return paramMap.getOrDefault(GROUP_DRIVE_CRAWLER, Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
     }
 
     protected boolean isIgnoreFolder(final Map<String, String> paramMap) {
@@ -228,50 +244,46 @@ public class OneDriveDataStore extends Office365DataStore {
 
     protected String[] getSupportedMimeTypes(final Map<String, String> paramMap) {
         return StreamUtil.split(paramMap.getOrDefault(SUPPORTED_MIMETYPES, ".*"), ",")
-                .get(stream -> stream.map(s -> s.trim()).toArray(n -> new String[n]));
+                .get(stream -> stream.map(String::trim).toArray(n -> new String[n]));
     }
 
     protected void storeSharedDocumentsDrive(final DataConfig dataConfig, final IndexUpdateCallback callback,
             final Map<String, Object> configMap, final Map<String, String> paramMap, final Map<String, String> scriptMap,
-            final Map<String, Object> defaultDataMap, final Office365Client client, final String driveId) {
-        try {
-            getDriveItemsInDrive(client, c -> driveId != null ? c.drives(driveId) : c.drive(),
-                    item -> processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client,
-                            c -> driveId != null ? c.drives(driveId) : c.drive(), item, Collections.emptyList()));
-        } catch (final Exception e) {
-            logger.warn("Failed to process shared documents drive.", e);
-        }
+            final Map<String, Object> defaultDataMap, final ExecutorService executorService, final Office365Client client,
+            final String driveId) {
+        getDriveItemsInDrive(client, c -> driveId != null ? c.drives(driveId) : c.drive(),
+                item -> executorService.execute(() -> processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap,
+                        client, c -> driveId != null ? c.drives(driveId) : c.drive(), item, Collections.emptyList())));
     }
 
     protected void storeUsersDrive(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, Object> configMap,
             final Map<String, String> paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
-            final Office365Client client) {
-        try {
-            getLicensedUsers(client, user -> {
-                try {
-                    getDriveItemsInDrive(client, c -> c.users(user.id).drive(), item -> processDriveItem(dataConfig, callback, configMap,
-                            paramMap, scriptMap, defaultDataMap, client, c -> c.users(user.id).drive(), item, getUserRoles(user)));
-                } catch (final GraphServiceException e) {
-                    logger.warn("Failed to store " + user.displayName + "'s Drive, ", e);
-                }
-            });
-        } catch (final Exception e) {
-            logger.warn("Failed to process user drive.", e);
+            final ExecutorService executorService, final Office365Client client) {
+        getLicensedUsers(client, user -> {
+            try {
+                getDriveItemsInDrive(client, c -> c.users(user.id).drive(),
+                        item -> executorService.execute(() -> processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap,
+                                defaultDataMap, client, c -> c.users(user.id).drive(), item, getUserRoles(user))));
+            } catch (final GraphServiceException e) {
+                logger.warn("Failed to store " + user.displayName + "'s Drive, ", e);
+            }
+        });
+    }
+
+    protected void isInterrupted(final Exception e) throws InterruptedException {
+        if (e instanceof InterruptedException) {
+            throw (InterruptedException) e;
         }
     }
 
     protected void storeGroupsDrive(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, Object> configMap,
             final Map<String, String> paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
-            final Office365Client client) {
-        try {
-            getOffice365Groups(client, group -> {
-                getDriveItemsInDrive(client, c -> c.groups(group.id).drive(), //
-                        item -> processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, client,
-                                c -> c.groups(group.id).drive(), item, getGroupRoles(group)));
-            });
-        } catch (final Exception e) {
-            logger.warn("Failed to process group drive.", e);
-        }
+            final ExecutorService executorService, final Office365Client client) {
+        getOffice365Groups(client, group -> {
+            getDriveItemsInDrive(client, c -> c.groups(group.id).drive(), //
+                    item -> executorService.execute(() -> processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap,
+                            defaultDataMap, client, c -> c.groups(group.id).drive(), item, getGroupRoles(group))));
+        });
     }
 
     protected void processDriveItem(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, Object> configMap,
@@ -306,12 +318,12 @@ public class OneDriveDataStore extends Office365DataStore {
         final UrlFilter urlFilter = (UrlFilter) configMap.get(URL_FILTER);
         if (urlFilter != null && !urlFilter.match(url)) {
             if (logger.isDebugEnabled()) {
-                logger.debug("Not matched: " + url);
+                logger.debug("Not matched: {}", url);
             }
             return;
         }
 
-        logger.info("Crawling URL: " + url);
+        logger.info("Crawling URL: {}", url);
 
         final boolean ignoreError = ((Boolean) configMap.get(IGNORE_ERROR)).booleanValue();
 
