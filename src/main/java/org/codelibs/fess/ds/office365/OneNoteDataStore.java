@@ -19,6 +19,9 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -42,17 +45,21 @@ import com.microsoft.graph.requests.extensions.IOnenoteRequestBuilder;
 
 public class OneNoteDataStore extends Office365DataStore {
 
-    // scripts
-    protected static final String NOTEBOOKS = "notebooks";
-    protected static final String NOTEBOOKS_NAME = "name";
-    protected static final String NOTEBOOKS_CONTENTS = "contents";
-    protected static final String NOTEBOOKS_SIZE = "size";
-    protected static final String NOTEBOOKS_CREATED = "created";
-    protected static final String NOTEBOOKS_LAST_MODIFIED = "last_modified";
-    protected static final String NOTEBOOKS_WEB_URL = "web_url";
-    protected static final String NOTEBOOKS_ROLES = "roles";
-
     private static final Logger logger = LoggerFactory.getLogger(OneNoteDataStore.class);
+
+    // scripts
+    protected static final String NOTEBOOK = "notebook";
+    protected static final String NOTEBOOK_NAME = "name";
+    protected static final String NOTEBOOK_CONTENTS = "contents";
+    protected static final String NOTEBOOK_SIZE = "size";
+    protected static final String NOTEBOOK_CREATED = "created";
+    protected static final String NOTEBOOK_LAST_MODIFIED = "last_modified";
+    protected static final String NOTEBOOK_WEB_URL = "web_url";
+    protected static final String NOTEBOOK_ROLES = "roles";
+    protected static final String NUMBER_OF_THREADS = "number_of_threads";
+    protected static final String SITE_NOTE_CRAWLER = "site_note_crawler";
+    protected static final String USER_NOTE_CRAWLER = "user_note_crawler";
+    protected static final String GROUP_NOTE_CRAWLER = "group_note_crawler";
 
     @Override
     protected String getName() {
@@ -63,25 +70,34 @@ public class OneNoteDataStore extends Office365DataStore {
     protected void storeData(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap) {
 
+        final ExecutorService executorService =
+                Executors.newFixedThreadPool(Integer.parseInt(paramMap.getOrDefault(NUMBER_OF_THREADS, "1")));
         try (final Office365Client client = createClient(paramMap)) {
             if (isSiteNoteCrawler(paramMap)) {
                 if (logger.isDebugEnabled()) {
                     logger.debug("crawling site notes.");
                 }
-                storeSiteNotes(dataConfig, callback, paramMap, scriptMap, defaultDataMap, client);
+                storeSiteNotes(dataConfig, callback, paramMap, scriptMap, defaultDataMap, executorService, client);
             }
             if (isUserNoteCrawler(paramMap)) {
                 if (logger.isDebugEnabled()) {
                     logger.debug("crawling user notes.");
                 }
-                storeUsersNotes(dataConfig, callback, paramMap, scriptMap, defaultDataMap, client);
+                storeUsersNotes(dataConfig, callback, paramMap, scriptMap, defaultDataMap, executorService, client);
             }
             if (isGroupNoteCrawler(paramMap)) {
                 if (logger.isDebugEnabled()) {
                     logger.debug("crawling group notes.");
                 }
-                storeGroupsNotes(dataConfig, callback, paramMap, scriptMap, defaultDataMap, client);
+                storeGroupsNotes(dataConfig, callback, paramMap, scriptMap, defaultDataMap, executorService, client);
             }
+            executorService.awaitTermination(60, TimeUnit.SECONDS);
+        } catch (final InterruptedException e) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Interrupted.", e);
+            }
+        } finally {
+            executorService.shutdown();
         }
     }
 
@@ -90,62 +106,47 @@ public class OneNoteDataStore extends Office365DataStore {
     }
 
     protected boolean isGroupNoteCrawler(final Map<String, String> paramMap) {
-        return paramMap.getOrDefault("group_note_crawler", Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+        return paramMap.getOrDefault(GROUP_NOTE_CRAWLER, Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
     }
 
     protected boolean isUserNoteCrawler(final Map<String, String> paramMap) {
-        return paramMap.getOrDefault("user_note_crawler", Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+        return paramMap.getOrDefault(USER_NOTE_CRAWLER, Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
     }
 
     protected boolean isSiteNoteCrawler(final Map<String, String> paramMap) {
-        return paramMap.getOrDefault("site_note_crawler", Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+        return paramMap.getOrDefault(SITE_NOTE_CRAWLER, Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
     }
 
     protected void storeSiteNotes(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
-            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Office365Client client) {
-        try {
-            final Site root = client.getSite("root");
-            getNotebooks(client, c -> c.sites(root.id).onenote(), notebook -> {
-                processNotebook(dataConfig, callback, paramMap, scriptMap, defaultDataMap, client, c -> c.sites(root.id).onenote(),
-                        notebook, null);
-            });
-        } catch (final ClientException e) {
-            logger.warn("Failed to process site notes.", e);
-        }
+            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final ExecutorService executorService,
+            final Office365Client client) {
+        final Site root = client.getSite("root");
+        getNotebooks(client, c -> c.sites(root.id).onenote(), notebook -> executorService.execute(() -> processNotebook(dataConfig,
+                callback, paramMap, scriptMap, defaultDataMap, client, c -> c.sites(root.id).onenote(), notebook, null)));
     }
 
     protected void storeUsersNotes(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
-            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Office365Client client) {
-        try {
-            getLicensedUsers(client, user -> {
-                final List<String> roles = getUserRoles(user);
-                try {
-                    getNotebooks(client, c -> c.users(user.id).onenote(), notebook -> {
-                        processNotebook(dataConfig, callback, paramMap, scriptMap, defaultDataMap, client, c -> c.users(user.id).onenote(),
-                                notebook, roles);
-                    });
-                } catch (final GraphServiceException e) {
-                    logger.warn("Failed to store " + user.displayName + "'s Notebooks.", e);
-                }
-            });
-        } catch (final Exception e) {
-            logger.warn("Failed to process user notes.", e);
-        }
+            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final ExecutorService executorService,
+            final Office365Client client) {
+        getLicensedUsers(client, user -> {
+            final List<String> roles = getUserRoles(user);
+            try {
+                getNotebooks(client, c -> c.users(user.id).onenote(), notebook -> executorService.execute(() -> processNotebook(dataConfig,
+                        callback, paramMap, scriptMap, defaultDataMap, client, c -> c.users(user.id).onenote(), notebook, roles)));
+            } catch (final GraphServiceException e) {
+                logger.warn("Failed to store " + user.displayName + "'s Notebooks.", e);
+            }
+        });
     }
 
     protected void storeGroupsNotes(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
-            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Office365Client client) {
-        try {
-            getOffice365Groups(client, group -> {
-                final List<String> roles = getGroupRoles(group);
-                getNotebooks(client, c -> c.groups(group.id).onenote(), notebook -> {
-                    processNotebook(dataConfig, callback, paramMap, scriptMap, defaultDataMap, client, c -> c.groups(group.id).onenote(),
-                            notebook, roles);
-                });
-            });
-        } catch (final Exception e) {
-            logger.warn("Failed to process group notes.", e);
-        }
+            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final ExecutorService executorService,
+            final Office365Client client) {
+        getOffice365Groups(client, group -> {
+            final List<String> roles = getGroupRoles(group);
+            getNotebooks(client, c -> c.groups(group.id).onenote(), notebook -> executorService.execute(() -> processNotebook(dataConfig,
+                    callback, paramMap, scriptMap, defaultDataMap, client, c -> c.groups(group.id).onenote(), notebook, roles)));
+        });
     }
 
     protected void processNotebook(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
@@ -157,18 +158,20 @@ public class OneNoteDataStore extends Office365DataStore {
 
         try {
             final String url = notebook.links.oneNoteWebUrl.href;
-            logger.info("Crawling URL: " + url);
+            logger.info("Crawling URL: {}", url);
 
             final String contents = client.getNotebookContent(builder, notebook.id);
             final long size = contents != null ? contents.length() : 0L;
-            notebooksMap.put(NOTEBOOKS_NAME, notebook.displayName);
-            notebooksMap.put(NOTEBOOKS_CONTENTS, contents);
-            notebooksMap.put(NOTEBOOKS_SIZE, size);
-            notebooksMap.put(NOTEBOOKS_CREATED, notebook.createdDateTime.getTime());
-            notebooksMap.put(NOTEBOOKS_LAST_MODIFIED, notebook.lastModifiedDateTime.getTime());
-            notebooksMap.put(NOTEBOOKS_WEB_URL, url);
-            notebooksMap.put(NOTEBOOKS_ROLES, roles);
-            resultMap.put(NOTEBOOKS, notebooksMap);
+            notebooksMap.put(NOTEBOOK_NAME, notebook.displayName);
+            notebooksMap.put(NOTEBOOK_CONTENTS, contents);
+            notebooksMap.put(NOTEBOOK_SIZE, size);
+            notebooksMap.put(NOTEBOOK_CREATED, notebook.createdDateTime.getTime());
+            notebooksMap.put(NOTEBOOK_LAST_MODIFIED, notebook.lastModifiedDateTime.getTime());
+            notebooksMap.put(NOTEBOOK_WEB_URL, url);
+            notebooksMap.put(NOTEBOOK_ROLES, roles);
+
+            resultMap.put("notebooks", notebooksMap); // TODO deprecated
+            resultMap.put(NOTEBOOK, notebooksMap);
             if (logger.isDebugEnabled()) {
                 logger.debug("notebooksMap: {}", notebooksMap);
             }
