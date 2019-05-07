@@ -22,14 +22,12 @@ import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-import org.codelibs.core.lang.StringUtil;
 import org.codelibs.fess.Constants;
 import org.codelibs.fess.app.service.FailureUrlService;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.exception.MultipleCrawlingAccessException;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.es.config.exentity.DataConfig;
-import org.codelibs.fess.exception.DataStoreException;
 import org.codelibs.fess.util.ComponentUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -65,24 +63,7 @@ public class OneNoteDataStore extends Office365DataStore {
     protected void storeData(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap) {
 
-        final String tenant = getTenant(paramMap);
-        final String clientId = getClientId(paramMap);
-        final String clientSecret = getClientSecret(paramMap);
-
-        if (tenant.isEmpty() || clientId.isEmpty() || clientSecret.isEmpty()) {
-            throw new DataStoreException("parameter '" + //
-                    TENANT_PARAM + "', '" + //
-                    CLIENT_ID_PARAM + "', '" + //
-                    CLIENT_SECRET_PARAM + "' is required");
-        }
-
-        try (final Office365Client client = new Office365Client(tenant, clientId, clientSecret, getAccessTimeout(paramMap))) {
-            // debug
-            final String accessToken = getAccessToken(paramMap);
-            if (StringUtil.isNotBlank(accessToken)) {
-                client.connect(accessToken);
-            }
-
+        try (final Office365Client client = createClient(paramMap)) {
             if (isSiteNoteCrawler(paramMap)) {
                 if (logger.isDebugEnabled()) {
                     logger.debug("crawling site notes.");
@@ -102,6 +83,10 @@ public class OneNoteDataStore extends Office365DataStore {
                 storeGroupsNotes(dataConfig, callback, paramMap, scriptMap, defaultDataMap, client);
             }
         }
+    }
+
+    protected Office365Client createClient(final Map<String, String> params) {
+        return new Office365Client(params);
     }
 
     protected boolean isGroupNoteCrawler(final Map<String, String> paramMap) {

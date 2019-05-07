@@ -33,12 +33,11 @@ import org.codelibs.fess.app.service.FailureUrlService;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.exception.MaxLengthExceededException;
 import org.codelibs.fess.crawler.exception.MultipleCrawlingAccessException;
-import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
+import org.codelibs.fess.crawler.extractor.Extractor;
 import org.codelibs.fess.crawler.filter.UrlFilter;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.exception.DataStoreCrawlingException;
-import org.codelibs.fess.exception.DataStoreException;
 import org.codelibs.fess.helper.PermissionHelper;
 import org.codelibs.fess.helper.SystemHelper;
 import org.codelibs.fess.util.ComponentUtil;
@@ -57,6 +56,7 @@ import com.microsoft.graph.requests.extensions.IPermissionCollectionPage;
 
 public class OneDriveDataStore extends Office365DataStore {
 
+
     private static final Logger logger = LoggerFactory.getLogger(OneDriveDataStore.class);
 
     protected static final long DEFAULT_MAX_SIZE = 10000000L; // 10m
@@ -71,48 +71,51 @@ public class OneDriveDataStore extends Office365DataStore {
     // parameters
     protected static final String MAX_SIZE = "max_size";
     protected static final String IGNORE_FOLDER = "ignore_folder";
+    protected static final String IGNORE_ERROR = "ignore_error";
     protected static final String SUPPORTED_MIMETYPES = "supported_mimetypes";
     protected static final String INCLUDE_PATTERN = "include_pattern";
     protected static final String EXCLUDE_PATTERN = "exclude_pattern";
     protected static final String URL_FILTER = "url_filter";
     protected static final String DRIVE_ID = "drive_id";
+    protected static final String DEFAULT_PERMISSIONS = "default_permissions";
+    protected static final String NUMBER_OF_THREADS = "number_of_threads";
 
     // scripts
-    protected static final String FILES = "files";
-    protected static final String FILES_NAME = "name";
-    protected static final String FILES_DESCRIPTION = "description";
-    protected static final String FILES_CONTENTS = "contents";
-    protected static final String FILES_MIMETYPE = "mimetype";
-    protected static final String FILES_FILETYPE = "filetype";
-    protected static final String FILES_CREATED = "created";
-    protected static final String FILES_LAST_MODIFIED = "last_modified";
-    protected static final String FILES_SIZE = "size";
-    protected static final String FILES_WEB_URL = "web_url";
-    protected static final String FILES_URL = "url";
-    protected static final String FILES_ROLES = "roles";
-    protected static final String FILES_CTAG = "ctag";
-    protected static final String FILES_ETAG = "etag";
-    protected static final String FILES_ID = "id";
-    protected static final String FILES_WEBDAV_URL = "webdav_url";
-    protected static final String FILES_LOCATION = "location";
-    protected static final String FILES_CREATEDBY_APPLICATION = "createdby_application";
-    protected static final String FILES_CREATEDBY_DEVICE = "createdby_device";
-    protected static final String FILES_CREATEDBY_USER = "createdby_user";
-    protected static final String FILES_DELETED = "deleted";
-    protected static final String FILES_HASHES = "hashes";
-    protected static final String FILES_LAST_MODIFIEDBY_APPLICATION = "last_modifiedby_application";
-    protected static final String FILES_LAST_MODIFIEDBY_DEVICE = "last_modifiedby_device";
-    protected static final String FILES_LAST_MODIFIEDBY_USER = "last_modifiedby_user";
-    protected static final String FILES_IMAGE = "image";
-    protected static final String FILES_PARENT = "parent";
-    protected static final String FILES_PARENT_ID = "parent_id";
-    protected static final String FILES_PARENT_NAME = "parent_name";
-    protected static final String FILES_PARENT_PATH = "parent_path";
-    protected static final String FILES_PHOTO = "photo";
-    protected static final String FILES_PUBLICATION = "publication";
-    protected static final String FILES_SEARCH_RESULT = "search_result";
-    protected static final String FILES_SPECIAL_FOLDER = "special_folder";
-    protected static final String FILES_VIDEO = "video";
+    protected static final String FILE = "file";
+    protected static final String FILE_NAME = "name";
+    protected static final String FILE_DESCRIPTION = "description";
+    protected static final String FILE_CONTENTS = "contents";
+    protected static final String FILE_MIMETYPE = "mimetype";
+    protected static final String FILE_FILETYPE = "filetype";
+    protected static final String FILE_CREATED = "created";
+    protected static final String FILE_LAST_MODIFIED = "last_modified";
+    protected static final String FILE_SIZE = "size";
+    protected static final String FILE_WEB_URL = "web_url";
+    protected static final String FILE_URL = "url";
+    protected static final String FILE_ROLES = "roles";
+    protected static final String FILE_CTAG = "ctag";
+    protected static final String FILE_ETAG = "etag";
+    protected static final String FILE_ID = "id";
+    protected static final String FILE_WEBDAV_URL = "webdav_url";
+    protected static final String FILE_LOCATION = "location";
+    protected static final String FILE_CREATEDBY_APPLICATION = "createdby_application";
+    protected static final String FILE_CREATEDBY_DEVICE = "createdby_device";
+    protected static final String FILE_CREATEDBY_USER = "createdby_user";
+    protected static final String FILE_DELETED = "deleted";
+    protected static final String FILE_HASHES = "hashes";
+    protected static final String FILE_LAST_MODIFIEDBY_APPLICATION = "last_modifiedby_application";
+    protected static final String FILE_LAST_MODIFIEDBY_DEVICE = "last_modifiedby_device";
+    protected static final String FILE_LAST_MODIFIEDBY_USER = "last_modifiedby_user";
+    protected static final String FILE_IMAGE = "image";
+    protected static final String FILE_PARENT = "parent";
+    protected static final String FILE_PARENT_ID = "parent_id";
+    protected static final String FILE_PARENT_NAME = "parent_name";
+    protected static final String FILE_PARENT_PATH = "parent_path";
+    protected static final String FILE_PHOTO = "photo";
+    protected static final String FILE_PUBLICATION = "publication";
+    protected static final String FILE_SEARCH_RESULT = "search_result";
+    protected static final String FILE_SPECIAL_FOLDER = "special_folder";
+    protected static final String FILE_VIDEO = "video";
 
     protected String extractorName = "tikaExtractor";
 
@@ -125,33 +128,17 @@ public class OneDriveDataStore extends Office365DataStore {
     protected void storeData(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap) {
 
-        final String tenant = getTenant(paramMap);
-        final String clientId = getClientId(paramMap);
-        final String clientSecret = getClientSecret(paramMap);
-
-        if (tenant.isEmpty() || clientId.isEmpty() || clientSecret.isEmpty()) {
-            throw new DataStoreException("parameter '" + //
-                    TENANT_PARAM + "', '" + //
-                    CLIENT_ID_PARAM + "', '" + //
-                    CLIENT_SECRET_PARAM + "' is required");
-        }
-
         final Map<String, Object> configMap = new HashMap<>();
         configMap.put(MAX_SIZE, getMaxSize(paramMap));
         configMap.put(IGNORE_FOLDER, isIgnoreFolder(paramMap));
+        configMap.put(IGNORE_ERROR, isIgnoreError(paramMap));
         configMap.put(SUPPORTED_MIMETYPES, getSupportedMimeTypes(paramMap));
         configMap.put(URL_FILTER, getUrlFilter(paramMap));
         if (logger.isDebugEnabled()) {
             logger.debug("configMap: {}", configMap);
         }
 
-        try (final Office365Client client = new Office365Client(tenant, clientId, clientSecret, getAccessTimeout(paramMap))) {
-            // debug
-            final String accessToken = getAccessToken(paramMap);
-            if (StringUtil.isNotBlank(accessToken)) {
-                client.connect(accessToken);
-            }
-
+        try (final Office365Client client = createClient(paramMap)) {
             final String driveId = paramMap.get(DRIVE_ID);
             if (StringUtil.isNotBlank(driveId)) {
                 if (logger.isDebugEnabled()) {
@@ -189,6 +176,10 @@ public class OneDriveDataStore extends Office365DataStore {
         }
     }
 
+    protected Office365Client createClient(final Map<String, String> params) {
+        return new Office365Client(params);
+    }
+
     protected UrlFilter getUrlFilter(final Map<String, String> paramMap) {
         final UrlFilter urlFilter = ComponentUtil.getComponent(UrlFilter.class);
         final String include = paramMap.get(INCLUDE_PATTERN);
@@ -201,7 +192,7 @@ public class OneDriveDataStore extends Office365DataStore {
         }
         urlFilter.init(paramMap.get(Constants.CRAWLING_INFO_ID));
         if (logger.isDebugEnabled()) {
-            logger.debug("urlFilter: " + urlFilter);
+            logger.debug("urlFilter: {}", urlFilter);
         }
         return urlFilter;
     }
@@ -220,6 +211,10 @@ public class OneDriveDataStore extends Office365DataStore {
 
     protected boolean isIgnoreFolder(final Map<String, String> paramMap) {
         return paramMap.getOrDefault(IGNORE_FOLDER, Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+    }
+
+    protected boolean isIgnoreError(final Map<String, String> paramMap) {
+        return paramMap.getOrDefault(IGNORE_ERROR, Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
     }
 
     protected long getMaxSize(final Map<String, String> paramMap) {
@@ -299,6 +294,14 @@ public class OneDriveDataStore extends Office365DataStore {
             return;
         }
 
+        final String[] supportedMimeTypes = (String[]) configMap.get(SUPPORTED_MIMETYPES);
+        if (!Stream.of(supportedMimeTypes).anyMatch(mimetype::matches)) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("{} is not an indexing target.", mimetype);
+            }
+            return;
+        }
+
         final String url = getUrl(configMap, paramMap, item);
         final UrlFilter urlFilter = (UrlFilter) configMap.get(URL_FILTER);
         if (urlFilter != null && !urlFilter.match(url)) {
@@ -310,7 +313,7 @@ public class OneDriveDataStore extends Office365DataStore {
 
         logger.info("Crawling URL: " + url);
 
-        final String[] supportedMimeTypes = (String[]) configMap.get(SUPPORTED_MIMETYPES);
+        final boolean ignoreError = ((Boolean) configMap.get(IGNORE_ERROR)).booleanValue();
 
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
         final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
@@ -323,48 +326,49 @@ public class OneDriveDataStore extends Office365DataStore {
             }
 
             final String filetype = ComponentUtil.getFileTypeHelper().get(mimetype);
-            filesMap.put(FILES_NAME, item.name);
-            filesMap.put(FILES_DESCRIPTION, item.description != null ? item.description : StringUtil.EMPTY);
-            filesMap.put(FILES_CONTENTS, getDriveItemContents(client, builder, item, supportedMimeTypes));
-            filesMap.put(FILES_MIMETYPE, mimetype);
-            filesMap.put(FILES_FILETYPE, filetype);
-            filesMap.put(FILES_CREATED, item.createdDateTime.getTime());
-            filesMap.put(FILES_LAST_MODIFIED, item.lastModifiedDateTime.getTime());
-            filesMap.put(FILES_SIZE, item.size);
-            filesMap.put(FILES_WEB_URL, item.webUrl);
-            filesMap.put(FILES_URL, url);
-            filesMap.put(FILES_CTAG, item.cTag);
-            filesMap.put(FILES_ETAG, item.eTag);
-            filesMap.put(FILES_ID, item.id);
-            filesMap.put(FILES_WEBDAV_URL, item.webDavUrl);
-            filesMap.put(FILES_LOCATION, item.location);
-            filesMap.put(FILES_CREATEDBY_APPLICATION, item.createdBy != null ? item.createdBy.application : null);
-            filesMap.put(FILES_CREATEDBY_DEVICE, item.createdBy != null ? item.createdBy.device : null);
-            filesMap.put(FILES_CREATEDBY_USER, item.createdBy != null ? item.createdBy.user : null);
-            filesMap.put(FILES_DELETED, item.deleted);
-            filesMap.put(FILES_HASHES, hashes);
-            filesMap.put(FILES_LAST_MODIFIEDBY_APPLICATION, item.lastModifiedBy != null ? item.lastModifiedBy.application : null);
-            filesMap.put(FILES_LAST_MODIFIEDBY_DEVICE, item.lastModifiedBy != null ? item.lastModifiedBy.device : null);
-            filesMap.put(FILES_LAST_MODIFIEDBY_USER, item.lastModifiedBy != null ? item.lastModifiedBy.user : null);
-            filesMap.put(FILES_IMAGE, item.image);
-            filesMap.put(FILES_PARENT, item.parentReference);
-            filesMap.put(FILES_PARENT_ID, item.parentReference != null ? item.parentReference.id : null);
-            filesMap.put(FILES_PARENT_NAME, item.parentReference != null ? item.parentReference.name : null);
-            filesMap.put(FILES_PARENT_PATH, item.parentReference != null ? item.parentReference.path : null);
-            filesMap.put(FILES_PHOTO, item.photo);
-            filesMap.put(FILES_PUBLICATION, item.publication);
-            filesMap.put(FILES_SEARCH_RESULT, item.searchResult);
-            filesMap.put(FILES_SPECIAL_FOLDER, item.specialFolder != null ? item.specialFolder.name : null);
-            filesMap.put(FILES_VIDEO, item.video);
+            filesMap.put(FILE_NAME, item.name);
+            filesMap.put(FILE_DESCRIPTION, item.description != null ? item.description : StringUtil.EMPTY);
+            filesMap.put(FILE_CONTENTS, getDriveItemContents(client, builder, item, ignoreError));
+            filesMap.put(FILE_MIMETYPE, mimetype);
+            filesMap.put(FILE_FILETYPE, filetype);
+            filesMap.put(FILE_CREATED, item.createdDateTime.getTime());
+            filesMap.put(FILE_LAST_MODIFIED, item.lastModifiedDateTime.getTime());
+            filesMap.put(FILE_SIZE, item.size);
+            filesMap.put(FILE_WEB_URL, item.webUrl);
+            filesMap.put(FILE_URL, url);
+            filesMap.put(FILE_CTAG, item.cTag);
+            filesMap.put(FILE_ETAG, item.eTag);
+            filesMap.put(FILE_ID, item.id);
+            filesMap.put(FILE_WEBDAV_URL, item.webDavUrl);
+            filesMap.put(FILE_LOCATION, item.location);
+            filesMap.put(FILE_CREATEDBY_APPLICATION, item.createdBy != null ? item.createdBy.application : null);
+            filesMap.put(FILE_CREATEDBY_DEVICE, item.createdBy != null ? item.createdBy.device : null);
+            filesMap.put(FILE_CREATEDBY_USER, item.createdBy != null ? item.createdBy.user : null);
+            filesMap.put(FILE_DELETED, item.deleted);
+            filesMap.put(FILE_HASHES, hashes);
+            filesMap.put(FILE_LAST_MODIFIEDBY_APPLICATION, item.lastModifiedBy != null ? item.lastModifiedBy.application : null);
+            filesMap.put(FILE_LAST_MODIFIEDBY_DEVICE, item.lastModifiedBy != null ? item.lastModifiedBy.device : null);
+            filesMap.put(FILE_LAST_MODIFIEDBY_USER, item.lastModifiedBy != null ? item.lastModifiedBy.user : null);
+            filesMap.put(FILE_IMAGE, item.image);
+            filesMap.put(FILE_PARENT, item.parentReference);
+            filesMap.put(FILE_PARENT_ID, item.parentReference != null ? item.parentReference.id : null);
+            filesMap.put(FILE_PARENT_NAME, item.parentReference != null ? item.parentReference.name : null);
+            filesMap.put(FILE_PARENT_PATH, item.parentReference != null ? item.parentReference.path : null);
+            filesMap.put(FILE_PHOTO, item.photo);
+            filesMap.put(FILE_PUBLICATION, item.publication);
+            filesMap.put(FILE_SEARCH_RESULT, item.searchResult);
+            filesMap.put(FILE_SPECIAL_FOLDER, item.specialFolder != null ? item.specialFolder.name : null);
+            filesMap.put(FILE_VIDEO, item.video);
 
             final List<String> permissions = getDriveItemPermissions(client, builder, item);
             roles.forEach(permissions::add);
             final PermissionHelper permissionHelper = ComponentUtil.getPermissionHelper();
-            StreamUtil.split(paramMap.get("default_permissions"), ",")
+            StreamUtil.split(paramMap.get(DEFAULT_PERMISSIONS), ",")
                     .of(stream -> stream.filter(StringUtil::isNotBlank).map(permissionHelper::encode).forEach(permissions::add));
-            filesMap.put(FILES_ROLES, permissions);
+            filesMap.put(FILE_ROLES, permissions);
 
-            resultMap.put(FILES, filesMap);
+            resultMap.put("files", filesMap); // TODO deprecated
+            resultMap.put(FILE, filesMap);
             if (logger.isDebugEnabled()) {
                 logger.debug("filesMap: {}", filesMap);
             }
@@ -453,15 +457,24 @@ public class OneDriveDataStore extends Office365DataStore {
     }
 
     protected String getDriveItemContents(final Office365Client client, final Function<IGraphServiceClient, IDriveRequestBuilder> builder,
-            final DriveItem item, final String[] supportedMimeTypes) {
+            final DriveItem item, final boolean ignoreError) {
         if (item.file != null) {
             final String mimeType = item.file.mimeType;
-            if (Stream.of(supportedMimeTypes).anyMatch(s -> mimeType.matches(s))) {
-                try (final InputStream in = client.getDriveContent(builder, item.id)) {
-                    final TikaExtractor extractor = ComponentUtil.getComponent(extractorName);
-                    return extractor.getText(in, null).getContent();
-                } catch (final Exception e) {
-                    throw new DataStoreCrawlingException(item.webUrl, "Failed to get contents of DriveItem: " + item.name, e);
+            try (final InputStream in = client.getDriveContent(builder, item.id)) {
+                Extractor extractor = ComponentUtil.getExtractorFactory().getExtractor(mimeType);
+                if (extractor == null) {
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("use a defautl extractor as {} by {}", extractorName, mimeType);
+                    }
+                    extractor = ComponentUtil.getComponent(extractorName);
+                }
+                return extractor.getText(in, null).getContent();
+            } catch (final Exception e) {
+                if (ignoreError) {
+                    logger.warn("Failed to get contents: " + item.name, e);
+                    return StringUtil.EMPTY;
+                } else {
+                    throw new DataStoreCrawlingException(item.webUrl, "Failed to get contents: " + item.name, e);
                 }
             }
         }
