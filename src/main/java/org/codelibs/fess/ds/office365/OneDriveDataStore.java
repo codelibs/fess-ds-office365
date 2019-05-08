@@ -27,6 +27,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.codelibs.core.lang.StringUtil;
@@ -377,7 +378,7 @@ public class OneDriveDataStore extends Office365DataStore {
             final PermissionHelper permissionHelper = ComponentUtil.getPermissionHelper();
             StreamUtil.split(paramMap.get(DEFAULT_PERMISSIONS), ",")
                     .of(stream -> stream.filter(StringUtil::isNotBlank).map(permissionHelper::encode).forEach(permissions::add));
-            filesMap.put(FILE_ROLES, permissions);
+            filesMap.put(FILE_ROLES, permissions.stream().distinct().collect(Collectors.toList()));
 
             resultMap.put("files", filesMap); // TODO deprecated
             resultMap.put(FILE, filesMap);
