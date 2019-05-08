@@ -361,7 +361,7 @@ public class Office365Client implements Closeable {
                         CLIENT_SECRET_PARAM + "' is required");
             }
 
-            this.accessTimeout = Long.parseLong(params.getOrDefault(ACCESS_TIMEOUT, StringUtil.EMPTY));
+            this.accessTimeout = Long.parseLong(params.getOrDefault(ACCESS_TIMEOUT, "30000"));
 
             refreshToken();
         }

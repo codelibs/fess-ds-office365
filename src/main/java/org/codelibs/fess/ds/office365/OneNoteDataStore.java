@@ -15,6 +15,7 @@
  */
 package org.codelibs.fess.ds.office365;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -121,8 +122,9 @@ public class OneNoteDataStore extends Office365DataStore {
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final ExecutorService executorService,
             final Office365Client client) {
         final Site root = client.getSite("root");
+        final List<String> roles = Collections.emptyList();
         getNotebooks(client, c -> c.sites(root.id).onenote(), notebook -> executorService.execute(() -> processNotebook(dataConfig,
-                callback, paramMap, scriptMap, defaultDataMap, client, c -> c.sites(root.id).onenote(), notebook, null)));
+                callback, paramMap, scriptMap, defaultDataMap, client, c -> c.sites(root.id).onenote(), notebook, roles)));
     }
 
     protected void storeUsersNotes(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
