@@ -16,6 +16,8 @@
 package org.codelibs.fess.ds.office365;
 
 import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -452,20 +454,33 @@ public class OneDriveDataStore extends Office365DataStore {
         }
 
         final String baseUrl = item.webUrl.substring(0, item.webUrl.indexOf("/_layouts/"));
-        final String parentPath;
+        final List<String> pathList = new ArrayList<>();
         if (item.parentReference != null && item.parentReference.path != null) {
             final String[] values = item.parentReference.path.split(":", 2);
-            parentPath = values.length > 1 ? values[1] : "/";
-        } else {
-            parentPath = "/";
+            if (values.length == 2) {
+                for (final String s : values[1].split("/")) {
+                    pathList.add(encodeUrl(s));
+                }
+            }
         }
+        pathList.add(encodeUrl(item.name));
+        final String path = pathList.stream().filter(StringUtil::isNotBlank).collect(Collectors.joining("/"));
         if (CRAWLER_TYPE_SHARED.equals(configMap.get(CURRENT_CRAWLER)) || CRAWLER_TYPE_GROUP.equals(configMap.get(CURRENT_CRAWLER))) {
-            return baseUrl + "/Shared%20Documents" + parentPath + "/" + item.name;
+            return baseUrl + "/Shared%20Documents/" + path;
         } else if (CRAWLER_TYPE_DRIVE.equals(configMap.get(CURRENT_CRAWLER))) {
             final Drive drive = (Drive) configMap.get(DRIVE_INFO);
-            return baseUrl + "/" + drive.name + parentPath + "/" + item.name;
+            return baseUrl + "/" + drive.name + "/" + path;
         } else {
-            return baseUrl + "/Documents" + parentPath + "/" + item.name;
+            return baseUrl + "/Documents/" + path;
+        }
+    }
+
+    protected String encodeUrl(final String s) {
+        try {
+            return URLEncoder.encode(s, Constants.UTF_8);
+        } catch (final UnsupportedEncodingException e) {
+            // ignore
+            return s;
         }
     }
 
