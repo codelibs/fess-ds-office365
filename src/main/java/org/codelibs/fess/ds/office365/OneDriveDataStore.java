@@ -149,18 +149,6 @@ public class OneDriveDataStore extends Office365DataStore {
         final ExecutorService executorService =
                 Executors.newFixedThreadPool(Integer.parseInt(paramMap.getOrDefault(NUMBER_OF_THREADS, "1")));
         try (final Office365Client client = createClient(paramMap)) {
-            final String driveId = paramMap.get(DRIVE_ID);
-            if (StringUtil.isNotBlank(driveId)) {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("crawling doclument library drive: " + driveId);
-                }
-                configMap.put(CURRENT_CRAWLER, CRAWLER_TYPE_DRIVE);
-                configMap.put(DRIVE_INFO, client.getDrive(driveId));
-                storeSharedDocumentsDrive(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, executorService, client,
-                        driveId);
-                configMap.remove(DRIVE_INFO);
-            }
-
             if (isSharedDocumentsDriveCrawler(paramMap)) {
                 if (logger.isDebugEnabled()) {
                     logger.debug("crawling shared documents drive.");
@@ -185,6 +173,18 @@ public class OneDriveDataStore extends Office365DataStore {
                 configMap.put(CURRENT_CRAWLER, CRAWLER_TYPE_GROUP);
                 storeGroupsDrive(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, executorService, client);
             }
+
+            final String driveId = paramMap.get(DRIVE_ID);
+            if (StringUtil.isNotBlank(driveId)) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("crawling doclument library drive: " + driveId);
+                }
+                configMap.put(CURRENT_CRAWLER, CRAWLER_TYPE_DRIVE);
+                configMap.put(DRIVE_INFO, client.getDrive(driveId));
+                storeSharedDocumentsDrive(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, executorService, client,
+                        driveId);
+            }
+
             executorService.awaitTermination(60, TimeUnit.SECONDS);
         } catch (final InterruptedException e) {
             if (logger.isDebugEnabled()) {
@@ -295,46 +295,46 @@ public class OneDriveDataStore extends Office365DataStore {
             final List<String> roles) {
         final String mimetype;
         final Hashes hashes;
-        if (item.file != null) {
-            mimetype = item.file.mimeType;
-            hashes = item.file.hashes;
-        } else {
-            mimetype = null;
-            hashes = null;
-        }
-        if (((Boolean) configMap.get(IGNORE_FOLDER)).booleanValue() && mimetype == null) {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Ignore item: {}", item.webUrl);
-            }
-            return;
-        }
-
-        final String[] supportedMimeTypes = (String[]) configMap.get(SUPPORTED_MIMETYPES);
-        if (!Stream.of(supportedMimeTypes).anyMatch(mimetype::matches)) {
-            if (logger.isDebugEnabled()) {
-                logger.debug("{} is not an indexing target.", mimetype);
-            }
-            return;
-        }
-
-        final String url = getUrl(configMap, paramMap, item);
-        final UrlFilter urlFilter = (UrlFilter) configMap.get(URL_FILTER);
-        if (urlFilter != null && !urlFilter.match(url)) {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Not matched: {}", url);
-            }
-            return;
-        }
-
-        logger.info("Crawling URL: {}", url);
-
-        final boolean ignoreError = ((Boolean) configMap.get(IGNORE_ERROR)).booleanValue();
-
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
-        final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
-        final Map<String, Object> filesMap = new HashMap<>();
-
         try {
+            if (item.file != null) {
+                mimetype = item.file.mimeType;
+                hashes = item.file.hashes;
+            } else {
+                mimetype = null;
+                hashes = null;
+            }
+            if (((Boolean) configMap.get(IGNORE_FOLDER)).booleanValue() && mimetype == null) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Ignore item: {}", item.webUrl);
+                }
+                return;
+            }
+
+            final String[] supportedMimeTypes = (String[]) configMap.get(SUPPORTED_MIMETYPES);
+            if (!Stream.of(supportedMimeTypes).anyMatch(mimetype::matches)) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("{} is not an indexing target.", mimetype);
+                }
+                return;
+            }
+
+            final String url = getUrl(configMap, paramMap, item);
+            final UrlFilter urlFilter = (UrlFilter) configMap.get(URL_FILTER);
+            if (urlFilter != null && !urlFilter.match(url)) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Not matched: {}", url);
+                }
+                return;
+            }
+
+            logger.info("Crawling URL: {}", url);
+
+            final boolean ignoreError = ((Boolean) configMap.get(IGNORE_ERROR)).booleanValue();
+
+            final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
+            final Map<String, Object> filesMap = new HashMap<>();
+
             if (item.size.longValue() > ((Long) configMap.get(MAX_SIZE)).longValue()) {
                 throw new MaxLengthExceededException("The content length (" + item.size + " byte) is over " + configMap.get(MAX_SIZE)
                         + " byte. The url is " + item.webUrl);
@@ -515,21 +515,24 @@ public class OneDriveDataStore extends Office365DataStore {
     }
 
     protected void getDriveItemChildren(final Office365Client client, final Function<IGraphServiceClient, IDriveRequestBuilder> builder,
-            final Consumer<DriveItem> consumer, final DriveItem root) {
+            final Consumer<DriveItem> consumer, final DriveItem item) {
+        if (logger.isDebugEnabled()) {
+            logger.debug("Current item: " + (item != null ? item.name + " -> " + item.webUrl : "root"));
+        }
         IDriveItemCollectionPage page;
         try {
-            if (root != null) {
-                consumer.accept(root);
-                if (root.folder == null) {
+            if (item != null) {
+                consumer.accept(item);
+                if (item.folder == null) {
                     return;
                 }
             }
-            page = client.getItemPage(builder, root != null ? root.id : null);
-            page.getCurrentPage().forEach(i -> getDriveItemChildren(client, builder, consumer, i));
+            page = client.getItemPage(builder, item != null ? item.id : null);
+            page.getCurrentPage().forEach(child -> getDriveItemChildren(client, builder, consumer, child));
             while (page.getNextPage() != null) {
                 try {
                     page = client.getNextItemPage(page);
-                    page.getCurrentPage().forEach(i -> getDriveItemChildren(client, builder, consumer, i));
+                    page.getCurrentPage().forEach(child -> getDriveItemChildren(client, builder, consumer, child));
                 } catch (final Exception e) {
                     if (logger.isDebugEnabled()) {
                         logger.debug("Failed to process a next page.", e);
