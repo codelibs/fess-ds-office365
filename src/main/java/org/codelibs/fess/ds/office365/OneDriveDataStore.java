@@ -42,6 +42,7 @@ import org.codelibs.fess.crawler.exception.MultipleCrawlingAccessException;
 import org.codelibs.fess.crawler.extractor.Extractor;
 import org.codelibs.fess.crawler.filter.UrlFilter;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
+import org.codelibs.fess.ds.office365.Office365Client.UserType;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.exception.DataStoreCrawlingException;
 import org.codelibs.fess.helper.PermissionHelper;
@@ -50,12 +51,15 @@ import org.codelibs.fess.util.ComponentUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.microsoft.graph.core.ClientException;
 import com.microsoft.graph.http.GraphServiceException;
 import com.microsoft.graph.models.extensions.Drive;
 import com.microsoft.graph.models.extensions.DriveItem;
 import com.microsoft.graph.models.extensions.Hashes;
 import com.microsoft.graph.models.extensions.IGraphServiceClient;
+import com.microsoft.graph.models.extensions.Permission;
 import com.microsoft.graph.requests.extensions.IDriveItemCollectionPage;
 import com.microsoft.graph.requests.extensions.IDriveRequestBuilder;
 import com.microsoft.graph.requests.extensions.IPermissionCollectionPage;
@@ -430,19 +434,89 @@ public class OneDriveDataStore extends Office365DataStore {
     protected List<String> getDriveItemPermissions(final Office365Client client,
             final Function<IGraphServiceClient, IDriveRequestBuilder> builder, final DriveItem item) {
         final List<String> permissions = new ArrayList<>();
-        final SystemHelper systemHelper = ComponentUtil.getSystemHelper();
         IPermissionCollectionPage page = client.getDrivePermissions(builder, item.id);
         while (page != null) {
             page.getCurrentPage().forEach(p -> {
-                if (p.grantedTo != null && p.grantedTo.user != null && p.grantedTo.user.id != null) {
-                    final String id = p.grantedTo.user.id;
-                    permissions.add(systemHelper.getSearchRoleByUser(id));
-                    permissions.add(systemHelper.getSearchRoleByGroup(id));
+                if (p.grantedTo != null && p.grantedTo.user != null) {
+                    assignPermission(client, permissions, p);
                 }
             });
             page = client.getNextPermissionPage(page);
         }
         return permissions;
+    }
+
+    protected void assignPermission(final Office365Client client, final List<String> permissions, final Permission permission) {
+        final SystemHelper systemHelper = ComponentUtil.getSystemHelper();
+        final String id = permission.grantedTo.user.id;
+        final String email = getUserEmail(permission);
+        if (StringUtil.isNotBlank(email)) {
+            final List<String> idList = new ArrayList<>();
+            if (StringUtil.isBlank(id)) {
+                for (final String gid : client.getGroupIdsByEmail(email)) {
+                    idList.add(gid);
+                }
+            } else {
+                idList.add(id);
+            }
+            if (idList.isEmpty()) {
+                permissions.add(systemHelper.getSearchRoleByUser(email));
+                permissions.add(systemHelper.getSearchRoleByGroup(email));
+            } else {
+                idList.stream().forEach(i -> {
+                    final UserType userType = client.getUserType(i);
+                    switch (userType) {
+                    case USER:
+                        permissions.add(systemHelper.getSearchRoleByUser(email));
+                        permissions.add(systemHelper.getSearchRoleByUser(i));
+                        break;
+                    case GROUP:
+                        permissions.add(systemHelper.getSearchRoleByGroup(email));
+                        permissions.add(systemHelper.getSearchRoleByGroup(i));
+                        break;
+                    default:
+                        permissions.add(systemHelper.getSearchRoleByUser(email));
+                        permissions.add(systemHelper.getSearchRoleByGroup(email));
+                        permissions.add(systemHelper.getSearchRoleByUser(i));
+                        permissions.add(systemHelper.getSearchRoleByGroup(i));
+                        break;
+                    }
+                });
+            }
+        } else if (StringUtil.isNotBlank(id)) {
+            final UserType userType = client.getUserType(id);
+            switch (userType) {
+            case USER:
+                permissions.add(systemHelper.getSearchRoleByUser(id));
+                break;
+            case GROUP:
+                permissions.add(systemHelper.getSearchRoleByGroup(id));
+                break;
+            default:
+                permissions.add(systemHelper.getSearchRoleByUser(id));
+                permissions.add(systemHelper.getSearchRoleByGroup(id));
+                break;
+            }
+        } else if (logger.isDebugEnabled()) {
+            logger.debug("No identity for permission: {}", permission.getRawObject());
+        }
+    }
+
+    protected String getUserEmail(final Permission permission) {
+        JsonObject rawObject = permission.getRawObject();
+        if (rawObject != null) {
+            rawObject = rawObject.getAsJsonObject("grantedTo");
+            if (rawObject != null) {
+                rawObject = rawObject.getAsJsonObject("user");
+                if (rawObject != null) {
+                    final JsonElement jsonElement = rawObject.get("email");
+                    if (jsonElement != null) {
+                        return jsonElement.getAsString();
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     protected String getUrl(final Map<String, Object> configMap, final Map<String, String> paramMap, final DriveItem item) {
@@ -527,7 +601,7 @@ public class OneDriveDataStore extends Office365DataStore {
                     return;
                 }
             }
-            page = client.getItemPage(builder, item != null ? item.id : null);
+            page = client.getDriveItemPage(builder, item != null ? item.id : null);
             page.getCurrentPage().forEach(child -> getDriveItemChildren(client, builder, consumer, child));
             while (page.getNextPage() != null) {
                 try {

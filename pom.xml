@@ -52,7 +52,7 @@
 		<jackson.version>2.8.11</jackson.version>
 		<commons.fileupload.version>1.4</commons.fileupload.version>
 		<asm.version>5.1</asm.version>
-		<microsoft.graph.version>1.0.0</microsoft.graph.version>
+		<microsoft.graph.version>1.3.0</microsoft.graph.version>
 		<adal4j.version>1.6.3</adal4j.version>
 
 		<!-- Testing -->
@@ -214,6 +214,33 @@
 			<groupId>org.codelibs</groupId>
 			<artifactId>corelib</artifactId>
 			<version>0.4.0</version>
+		</dependency>
+		<dependency>
+			<groupId>com.google.guava</groupId>
+			<artifactId>guava</artifactId>
+			<version>27.1-jre</version>
+			<exclusions>
+				<exclusion>
+					<groupId>org.codehaus.mojo</groupId>
+					<artifactId>animal-sniffer-annotations</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>com.google.j2objc</groupId>
+					<artifactId>j2objc-annotations</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>org.checkerframework</groupId>
+					<artifactId>checker-compat-qual</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>com.google.code.findbugs</groupId>
+					<artifactId>jsr305</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>com.google.errorprone</groupId>
+					<artifactId>error_prone_annotations</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 		<dependency>
 			<groupId>org.lastaflute</groupId>
