@@ -22,9 +22,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -38,6 +40,9 @@ import org.codelibs.fess.util.ComponentUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import com.microsoft.aad.adal4j.AuthenticationContext;
 import com.microsoft.aad.adal4j.AuthenticationResult;
 import com.microsoft.aad.adal4j.ClientCredential;
@@ -47,12 +52,14 @@ import com.microsoft.graph.http.IHttpRequest;
 import com.microsoft.graph.logger.DefaultLogger;
 import com.microsoft.graph.logger.LoggerLevel;
 import com.microsoft.graph.models.extensions.Drive;
+import com.microsoft.graph.models.extensions.Group;
 import com.microsoft.graph.models.extensions.IGraphServiceClient;
 import com.microsoft.graph.models.extensions.OnenotePage;
 import com.microsoft.graph.models.extensions.OnenoteSection;
 import com.microsoft.graph.models.extensions.Site;
 import com.microsoft.graph.models.extensions.User;
 import com.microsoft.graph.options.Option;
+import com.microsoft.graph.options.QueryOption;
 import com.microsoft.graph.requests.extensions.GraphServiceClient;
 import com.microsoft.graph.requests.extensions.IDriveCollectionPage;
 import com.microsoft.graph.requests.extensions.IDriveItemCollectionPage;
@@ -69,6 +76,7 @@ import com.microsoft.graph.requests.extensions.ISiteCollectionPage;
 import com.microsoft.graph.requests.extensions.IUserCollectionPage;
 
 public class Office365Client implements Closeable {
+
     private static final Logger logger = LoggerFactory.getLogger(Office365Client.class);
 
     protected static final String TENANT_PARAM = "tenant";
@@ -76,12 +84,16 @@ public class Office365Client implements Closeable {
     protected static final String CLIENT_SECRET_PARAM = "client_secret";
     protected static final String ACCESS_TIMEOUT = "access_timeout";
     protected static final String REFRESH_TOKEN_INTERVAL = "refresh_token_interval";
+    protected static final String USER_TYPE_CACHE_SIZE = "user_type_cache_size";
+    protected static final String GROUP_ID_CACHE_SIZE = "group_id_cache_size";
 
     protected static final String INVALID_AUTHENTICATION_TOKEN = "InvalidAuthenticationToken";
 
     protected IGraphServiceClient client;
     protected Map<String, String> params;
     protected TimeoutTask refreshTokenTask;
+    protected LoadingCache<String, UserType> userTypeCache;
+    protected LoadingCache<String, String[]> groupIdCache;
 
     public Office365Client(final Map<String, String> params) {
         this.params = params;
@@ -103,16 +115,50 @@ public class Office365Client implements Closeable {
 
                         @Override
                         public void logError(final String message, final Throwable t) {
-                            if (t instanceof GraphServiceException && expired((GraphServiceException) t)) {
-                                logger.debug(message, t);
+                            if (t instanceof GraphServiceException) {
+                                final GraphServiceException e = (GraphServiceException) t;
+                                if (expired(e) || e.getResponseCode() == 404) {
+                                    logger.debug("[Office365Client] " + message, t);
+                                } else {
+                                    logger.warn("[Office365Client] " + message, t);
+                                }
                             } else {
-                                logger.error(message, t);
+                                logger.error("[Office365Client] " + message, t);
                             }
                         }
                     }).buildClient();
         } catch (final Exception e) {
             throw new DataStoreException("Failed to create a client.", e);
         }
+
+        userTypeCache = CacheBuilder.newBuilder().maximumSize(Integer.parseInt(params.getOrDefault(USER_TYPE_CACHE_SIZE, "10000")))
+                .build(new CacheLoader<String, UserType>() {
+                    @Override
+                    public UserType load(final String key) {
+                        try {
+                            getUser(key, Collections.emptyList());
+                            return UserType.USER;
+                        } catch (final GraphServiceException e) {
+                            if (e.getResponseCode() == 404) {
+                                return UserType.GROUP;
+                            }
+                            logger.warn("Failed to detect an user type.", e);
+                        } catch (final Exception e) {
+                            logger.warn("Failed to get an user.", e);
+                        }
+                        return UserType.UNKNOWN;
+                    }
+                });
+
+        groupIdCache = CacheBuilder.newBuilder().maximumSize(Integer.parseInt(params.getOrDefault(GROUP_ID_CACHE_SIZE, "10000")))
+                .build(new CacheLoader<String, String[]>() {
+                    @Override
+                    public String[] load(final String email) {
+                        final List<String> idList = new ArrayList<>();
+                        getGroups(Collections.singletonList(new QueryOption("$filter", "mail eq '" + email + "'")), g -> idList.add(g.id));
+                        return idList.toArray(new String[idList.size()]);
+                    }
+                });
     }
 
     @Override
@@ -125,16 +171,36 @@ public class Office365Client implements Closeable {
         }
     }
 
+    public enum UserType {
+        USER, GROUP, UNKNOWN;
+    }
+
+    public UserType getUserType(final String id) {
+        if (StringUtil.isBlank(id)) {
+            return UserType.UNKNOWN;
+        }
+        try {
+            return userTypeCache.get(id);
+        } catch (final ExecutionException e) {
+            logger.warn("Failed to get an user type.", e);
+            return UserType.UNKNOWN;
+        }
+    }
+
     public InputStream getDriveContent(final Function<IGraphServiceClient, IDriveRequestBuilder> builder, final String id) {
         return builder.apply(client).items(id).content().buildRequest().get();
     }
 
     public IPermissionCollectionPage getDrivePermissions(final Function<IGraphServiceClient, IDriveRequestBuilder> builder,
             final String id) {
-        return builder.apply(client).items(id).permissions().buildRequest().get();
+        final IPermissionCollectionPage value = builder.apply(client).items(id).permissions().buildRequest().get();
+        if (logger.isDebugEnabled()) {
+            logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
+        }
+        return value;
     }
 
-    public IDriveItemCollectionPage getItemPage(final Function<IGraphServiceClient, IDriveRequestBuilder> builder, final String id) {
+    public IDriveItemCollectionPage getDriveItemPage(final Function<IGraphServiceClient, IDriveRequestBuilder> builder, final String id) {
         final IDriveItemCollectionPage value;
         if (id == null) {
             value = builder.apply(client).root().children().buildRequest().get();
@@ -155,7 +221,16 @@ public class Office365Client implements Closeable {
         return value;
     }
 
-    public IUserCollectionPage getUserPage(final List<? extends Option> options) {
+    public void getUsers(final List<QueryOption> options, final Consumer<User> consumer) {
+        IUserCollectionPage page = getUserPage(options);
+        page.getCurrentPage().stream().forEach(consumer::accept);
+        while (page.getNextPage() != null) {
+            page = getNextUserPage(page);
+            page.getCurrentPage().stream().forEach(consumer::accept);
+        }
+    }
+
+    protected IUserCollectionPage getUserPage(final List<? extends Option> options) {
         final IUserCollectionPage value = client.users().buildRequest(options).get();
         if (logger.isDebugEnabled()) {
             logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
@@ -163,8 +238,48 @@ public class Office365Client implements Closeable {
         return value;
     }
 
-    public IGroupCollectionPage getGroupPage(final List<? extends Option> options) {
+    protected IUserCollectionPage getNextUserPage(final IUserCollectionPage page) {
+        if (page.getNextPage() == null) {
+            return null;
+        }
+        final IUserCollectionPage value = page.getNextPage().buildRequest().get();
+        if (logger.isDebugEnabled()) {
+            logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
+        }
+        return value;
+    }
+
+    public String[] getGroupIdsByEmail(final String email) {
+        try {
+            return groupIdCache.get(email);
+        } catch (ExecutionException e) {
+            logger.warn("Failed to get group ids.", e);
+            return StringUtil.EMPTY_STRINGS;
+        }
+    }
+
+    public void getGroups(final List<QueryOption> options, final Consumer<Group> consumer) {
+        IGroupCollectionPage page = getGroupPage(options);
+        page.getCurrentPage().stream().forEach(consumer::accept);
+        while (page.getNextPage() != null) {
+            page = getNextGroupPage(page);
+            page.getCurrentPage().forEach(consumer::accept);
+        }
+    }
+
+    protected IGroupCollectionPage getGroupPage(final List<? extends Option> options) {
         final IGroupCollectionPage value = client.groups().buildRequest(options).get();
+        if (logger.isDebugEnabled()) {
+            logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
+        }
+        return value;
+    }
+
+    protected IGroupCollectionPage getNextGroupPage(final IGroupCollectionPage page) {
+        if (page.getNextPage() == null) {
+            return null;
+        }
+        final IGroupCollectionPage value = page.getNextPage().buildRequest().get();
         if (logger.isDebugEnabled()) {
             logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
         }
@@ -176,28 +291,6 @@ public class Office365Client implements Closeable {
             return null;
         }
         final IDriveItemCollectionPage value = page.getNextPage().buildRequest().get();
-        if (logger.isDebugEnabled()) {
-            logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
-        }
-        return value;
-    }
-
-    public IUserCollectionPage getNextUserPage(final IUserCollectionPage page) {
-        if (page.getNextPage() == null) {
-            return null;
-        }
-        final IUserCollectionPage value = page.getNextPage().buildRequest().get();
-        if (logger.isDebugEnabled()) {
-            logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
-        }
-        return value;
-    }
-
-    public IGroupCollectionPage getNextGroupPage(final IGroupCollectionPage page) {
-        if (page.getNextPage() == null) {
-            return null;
-        }
-        final IGroupCollectionPage value = page.getNextPage().buildRequest().get();
         if (logger.isDebugEnabled()) {
             logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
         }
@@ -285,25 +378,6 @@ public class Office365Client implements Closeable {
         return INVALID_AUTHENTICATION_TOKEN.equals(e.getServiceError().code);
     }
 
-    public IDriveCollectionPage getDrives() {
-        final IDriveCollectionPage value = client.drives().buildRequest().get();
-        if (logger.isDebugEnabled()) {
-            logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
-        }
-        return value;
-    }
-
-    public IDriveCollectionPage getNextDrivePage(final IDriveCollectionPage page) {
-        if (page.getNextPage() == null) {
-            return null;
-        }
-        final IDriveCollectionPage value = page.getNextPage().buildRequest().get();
-        if (logger.isDebugEnabled()) {
-            logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
-        }
-        return value;
-    }
-
     public ISiteCollectionPage getSites() {
         final ISiteCollectionPage value = client.sites().buildRequest().get();
         if (logger.isDebugEnabled()) {
@@ -325,6 +399,34 @@ public class Office365Client implements Closeable {
 
     public Drive getDrive(final String driveId) {
         final Drive value = client.drives(driveId).buildRequest().get();
+        if (logger.isDebugEnabled()) {
+            logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
+        }
+        return value;
+    }
+
+    public void getDrives(final Consumer<Drive> consumer) {
+        IDriveCollectionPage page = getDrives();
+        page.getCurrentPage().stream().forEach(consumer::accept);
+        while (page.getNextPage() != null) {
+            page = getNextDrivePage(page);
+            page.getCurrentPage().stream().forEach(consumer::accept);
+        }
+    }
+
+    protected IDriveCollectionPage getDrives() {
+        final IDriveCollectionPage value = client.drives().buildRequest().get();
+        if (logger.isDebugEnabled()) {
+            logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
+        }
+        return value;
+    }
+
+    protected IDriveCollectionPage getNextDrivePage(final IDriveCollectionPage page) {
+        if (page.getNextPage() == null) {
+            return null;
+        }
+        final IDriveCollectionPage value = page.getNextPage().buildRequest().get();
         if (logger.isDebugEnabled()) {
             logger.debug("raw: {}", value != null ? value.getRawObject() : "null");
         }
