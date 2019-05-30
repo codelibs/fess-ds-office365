@@ -550,8 +550,11 @@ public class OneDriveDataStore extends Office365DataStore {
     }
 
     protected String encodeUrl(final String s) {
+        if (StringUtil.isEmpty(s)) {
+            return s;
+        }
         try {
-            return URLEncoder.encode(s, Constants.UTF_8);
+            return URLEncoder.encode(s, Constants.UTF_8).replace("+", "%20");
         } catch (final UnsupportedEncodingException e) {
             // ignore
             return s;
