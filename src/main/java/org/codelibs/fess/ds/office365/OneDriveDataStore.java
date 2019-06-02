@@ -25,8 +25,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -135,14 +133,6 @@ public class OneDriveDataStore extends Office365DataStore {
     @Override
     protected String getName() {
         return "OneDrive";
-    }
-
-    protected ExecutorService newFixedThreadPool(final int nThreads) {
-        if (logger.isDebugEnabled()) {
-            logger.debug("Executor Thread Pool: " + nThreads);
-        }
-        return new ThreadPoolExecutor(nThreads, nThreads, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>(nThreads),
-                new ThreadPoolExecutor.CallerRunsPolicy());
     }
 
     @Override
