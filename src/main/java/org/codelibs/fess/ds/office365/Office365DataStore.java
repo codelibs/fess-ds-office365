@@ -18,10 +18,16 @@ package org.codelibs.fess.ds.office365;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import org.codelibs.fess.ds.AbstractDataStore;
 import org.codelibs.fess.util.ComponentUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.microsoft.graph.models.extensions.Group;
 import com.microsoft.graph.models.extensions.User;
@@ -29,12 +35,22 @@ import com.microsoft.graph.options.QueryOption;
 
 public abstract class Office365DataStore extends AbstractDataStore {
 
+    private static final Logger logger = LoggerFactory.getLogger(Office365DataStore.class);
+
     protected void getLicensedUsers(final Office365Client client, final Consumer<User> consumer) {
         client.getUsers(Collections.emptyList(), u -> {
             if (isLicensedUser(client, u.id)) {
                 consumer.accept(u);
             }
         });
+    }
+
+    protected ExecutorService newFixedThreadPool(final int nThreads) {
+        if (logger.isDebugEnabled()) {
+            logger.debug("Executor Thread Pool: " + nThreads);
+        }
+        return new ThreadPoolExecutor(nThreads, nThreads, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>(nThreads),
+                new ThreadPoolExecutor.CallerRunsPolicy());
     }
 
     protected boolean isLicensedUser(final Office365Client client, final String userId) {
