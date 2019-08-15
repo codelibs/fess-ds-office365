@@ -132,7 +132,7 @@ public class OneDriveDataStore extends Office365DataStore {
 
     @Override
     protected String getName() {
-        return "OneDrive";
+        return this.getClass().getSimpleName();
     }
 
     @Override

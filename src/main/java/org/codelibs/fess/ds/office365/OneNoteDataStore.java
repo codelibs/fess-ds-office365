@@ -63,7 +63,7 @@ public class OneNoteDataStore extends Office365DataStore {
 
     @Override
     protected String getName() {
-        return "OneNote";
+        return this.getClass().getSimpleName();
     }
 
     @Override
