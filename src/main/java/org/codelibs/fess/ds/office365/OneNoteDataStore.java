@@ -222,15 +222,15 @@ public class OneNoteDataStore extends Office365DataStore {
             final Consumer<Notebook> consumer) {
         try {
             INotebookCollectionPage page = client.getNotebookPage(builder);
-            while (page.getNextPage() != null) {
+            while (page != null) {
                 try {
-                    page = client.getNextNotebookPage(page);
-                    page.getCurrentPage().forEach(note -> consumer.accept(note));
+                    page.getCurrentPage().forEach(consumer);
                 } catch (final ClientException e) {
                     if (logger.isDebugEnabled()) {
-                        logger.debug("Failed to process a next page.", e);
+                        logger.debug("Failed to process a page.", e);
                     }
                 }
+                page = client.getNextNotebookPage(page);
             }
         } catch (final GraphServiceException e) {
             if (e.getResponseCode() == 404) {
