@@ -179,7 +179,7 @@ public class OneDriveDataStore extends Office365DataStore {
             final String driveId = paramMap.get(DRIVE_ID);
             if (StringUtil.isNotBlank(driveId)) {
                 if (logger.isDebugEnabled()) {
-                    logger.debug("crawling doclument library drive: " + driveId);
+                    logger.debug("crawling doclument library drive: {}", driveId);
                 }
                 configMap.put(CURRENT_CRAWLER, CRAWLER_TYPE_DRIVE);
                 configMap.put(DRIVE_INFO, client.getDrive(driveId));
@@ -596,7 +596,7 @@ public class OneDriveDataStore extends Office365DataStore {
     protected void getDriveItemChildren(final Office365Client client, final Function<IGraphServiceClient, IDriveRequestBuilder> builder,
             final Consumer<DriveItem> consumer, final DriveItem item) {
         if (logger.isDebugEnabled()) {
-            logger.debug("Current item: " + (item != null ? item.name + " -> " + item.webUrl : "root"));
+            logger.debug("Current item: {}", item != null ? item.name + " -> " + item.webUrl : "root");
         }
         IDriveItemCollectionPage page;
         try {
