@@ -35,7 +35,7 @@ public class OneNoteDataStoreTest extends ContainerTestCase {
     public static final String tenant = "";
     public static final String clientId = "";
     public static final String clientSecret = "";
-    
+
     private OneNoteDataStore dataStore;
 
     @Override
