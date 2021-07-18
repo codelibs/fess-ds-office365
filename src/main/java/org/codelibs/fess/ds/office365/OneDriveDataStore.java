@@ -44,6 +44,7 @@ import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.ds.office365.Office365Client.UserType;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.exception.DataStoreCrawlingException;
+import org.codelibs.fess.exception.DataStoreException;
 import org.codelibs.fess.helper.PermissionHelper;
 import org.codelibs.fess.helper.SystemHelper;
 import org.codelibs.fess.util.ComponentUtil;
@@ -193,9 +194,7 @@ public class OneDriveDataStore extends Office365DataStore {
             executorService.shutdown();
             executorService.awaitTermination(60, TimeUnit.SECONDS);
         } catch (final InterruptedException e) {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Interrupted.", e);
-            }
+            throw new DataStoreException("Interrupted.", e);
         } finally {
             executorService.shutdownNow();
         }
@@ -223,23 +222,23 @@ public class OneDriveDataStore extends Office365DataStore {
     }
 
     protected boolean isSharedDocumentsDriveCrawler(final Map<String, String> paramMap) {
-        return paramMap.getOrDefault(SHARED_DOCUMENTS_DRIVE_CRAWLER, Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+        return Constants.TRUE.equalsIgnoreCase(paramMap.getOrDefault(SHARED_DOCUMENTS_DRIVE_CRAWLER, Constants.TRUE));
     }
 
     protected boolean isUserDriveCrawler(final Map<String, String> paramMap) {
-        return paramMap.getOrDefault(USER_DRIVE_CRAWLER, Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+        return Constants.TRUE.equalsIgnoreCase(paramMap.getOrDefault(USER_DRIVE_CRAWLER, Constants.TRUE));
     }
 
     protected boolean isGroupDriveCrawler(final Map<String, String> paramMap) {
-        return paramMap.getOrDefault(GROUP_DRIVE_CRAWLER, Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+        return Constants.TRUE.equalsIgnoreCase(paramMap.getOrDefault(GROUP_DRIVE_CRAWLER, Constants.TRUE));
     }
 
     protected boolean isIgnoreFolder(final Map<String, String> paramMap) {
-        return paramMap.getOrDefault(IGNORE_FOLDER, Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+        return Constants.TRUE.equalsIgnoreCase(paramMap.getOrDefault(IGNORE_FOLDER, Constants.TRUE));
     }
 
     protected boolean isIgnoreError(final Map<String, String> paramMap) {
-        return paramMap.getOrDefault(IGNORE_ERROR, Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+        return Constants.TRUE.equalsIgnoreCase(paramMap.getOrDefault(IGNORE_ERROR, Constants.TRUE));
     }
 
     protected long getMaxSize(final Map<String, String> paramMap) {
@@ -336,7 +335,7 @@ public class OneDriveDataStore extends Office365DataStore {
 
             logger.info("Crawling URL: {}", url);
 
-            final boolean ignoreError = ((Boolean) configMap.get(IGNORE_ERROR)).booleanValue();
+            final boolean ignoreError = ((Boolean) configMap.get(IGNORE_ERROR));
 
             final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
             final Map<String, Object> filesMap = new HashMap<>();
@@ -456,9 +455,7 @@ public class OneDriveDataStore extends Office365DataStore {
         if (StringUtil.isNotBlank(email)) {
             final List<String> idList = new ArrayList<>();
             if (StringUtil.isBlank(id)) {
-                for (final String gid : client.getGroupIdsByEmail(email)) {
-                    idList.add(gid);
-                }
+                Collections.addAll(idList, client.getGroupIdsByEmail(email));
             } else {
                 idList.add(id);
             }
@@ -544,7 +541,8 @@ public class OneDriveDataStore extends Office365DataStore {
         final String path = pathList.stream().filter(StringUtil::isNotBlank).collect(Collectors.joining("/"));
         if (CRAWLER_TYPE_SHARED.equals(configMap.get(CURRENT_CRAWLER)) || CRAWLER_TYPE_GROUP.equals(configMap.get(CURRENT_CRAWLER))) {
             return baseUrl + "/Shared%20Documents/" + path;
-        } else if (CRAWLER_TYPE_DRIVE.equals(configMap.get(CURRENT_CRAWLER))) {
+        }
+        if (CRAWLER_TYPE_DRIVE.equals(configMap.get(CURRENT_CRAWLER))) {
             final Drive drive = (Drive) configMap.get(DRIVE_INFO);
             return baseUrl + "/" + drive.name + "/" + path;
         } else {
@@ -581,9 +579,8 @@ public class OneDriveDataStore extends Office365DataStore {
                 if (ignoreError) {
                     logger.warn("Failed to get contents: " + item.name, e);
                     return StringUtil.EMPTY;
-                } else {
-                    throw new DataStoreCrawlingException(item.webUrl, "Failed to get contents: " + item.name, e);
                 }
+                throw new DataStoreCrawlingException(item.webUrl, "Failed to get contents: " + item.name, e);
             }
         }
         return StringUtil.EMPTY;

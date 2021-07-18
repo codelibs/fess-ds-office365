@@ -31,6 +31,7 @@ import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.exception.MultipleCrawlingAccessException;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.es.config.exentity.DataConfig;
+import org.codelibs.fess.exception.DataStoreException;
 import org.codelibs.fess.util.ComponentUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -96,9 +97,7 @@ public class OneNoteDataStore extends Office365DataStore {
             executorService.shutdown();
             executorService.awaitTermination(60, TimeUnit.SECONDS);
         } catch (final InterruptedException e) {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Interrupted.", e);
-            }
+            throw new DataStoreException("Interrupted.", e);
         } finally {
             executorService.shutdownNow();
         }
@@ -109,15 +108,15 @@ public class OneNoteDataStore extends Office365DataStore {
     }
 
     protected boolean isGroupNoteCrawler(final Map<String, String> paramMap) {
-        return paramMap.getOrDefault(GROUP_NOTE_CRAWLER, Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+        return Constants.TRUE.equalsIgnoreCase(paramMap.getOrDefault(GROUP_NOTE_CRAWLER, Constants.TRUE));
     }
 
     protected boolean isUserNoteCrawler(final Map<String, String> paramMap) {
-        return paramMap.getOrDefault(USER_NOTE_CRAWLER, Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+        return Constants.TRUE.equalsIgnoreCase(paramMap.getOrDefault(USER_NOTE_CRAWLER, Constants.TRUE));
     }
 
     protected boolean isSiteNoteCrawler(final Map<String, String> paramMap) {
-        return paramMap.getOrDefault(SITE_NOTE_CRAWLER, Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+        return Constants.TRUE.equalsIgnoreCase(paramMap.getOrDefault(SITE_NOTE_CRAWLER, Constants.TRUE));
     }
 
     protected void storeSiteNotes(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,

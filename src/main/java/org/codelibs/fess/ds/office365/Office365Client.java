@@ -252,7 +252,7 @@ public class Office365Client implements Closeable {
     public String[] getGroupIdsByEmail(final String email) {
         try {
             return groupIdCache.get(email);
-        } catch (ExecutionException e) {
+        } catch (final ExecutionException e) {
             logger.warn("Failed to get group ids.", e);
             return StringUtil.EMPTY_STRINGS;
         }
