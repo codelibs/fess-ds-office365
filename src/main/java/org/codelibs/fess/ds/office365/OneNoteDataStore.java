@@ -38,11 +38,13 @@ import org.slf4j.LoggerFactory;
 
 import com.microsoft.graph.core.ClientException;
 import com.microsoft.graph.http.GraphServiceException;
-import com.microsoft.graph.models.extensions.IGraphServiceClient;
-import com.microsoft.graph.models.extensions.Notebook;
-import com.microsoft.graph.models.extensions.Site;
-import com.microsoft.graph.requests.extensions.INotebookCollectionPage;
-import com.microsoft.graph.requests.extensions.IOnenoteRequestBuilder;
+import com.microsoft.graph.models.Notebook;
+import com.microsoft.graph.models.Site;
+import com.microsoft.graph.requests.GraphServiceClient;
+import com.microsoft.graph.requests.NotebookCollectionPage;
+import com.microsoft.graph.requests.OnenoteRequestBuilder;
+
+import okhttp3.Request;
 
 public class OneNoteDataStore extends Office365DataStore {
 
@@ -154,7 +156,7 @@ public class OneNoteDataStore extends Office365DataStore {
 
     protected void processNotebook(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Office365Client client,
-            final Function<IGraphServiceClient, IOnenoteRequestBuilder> builder, final Notebook notebook, final List<String> roles) {
+            final Function<GraphServiceClient<Request>, OnenoteRequestBuilder> builder, final Notebook notebook, final List<String> roles) {
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
         final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
         final Map<String, Object> notebooksMap = new HashMap<>();
@@ -168,8 +170,8 @@ public class OneNoteDataStore extends Office365DataStore {
             notebooksMap.put(NOTEBOOK_NAME, notebook.displayName);
             notebooksMap.put(NOTEBOOK_CONTENTS, contents);
             notebooksMap.put(NOTEBOOK_SIZE, size);
-            notebooksMap.put(NOTEBOOK_CREATED, notebook.createdDateTime.getTime());
-            notebooksMap.put(NOTEBOOK_LAST_MODIFIED, notebook.lastModifiedDateTime.getTime());
+            notebooksMap.put(NOTEBOOK_CREATED, notebook.createdDateTime);
+            notebooksMap.put(NOTEBOOK_LAST_MODIFIED, notebook.lastModifiedDateTime);
             notebooksMap.put(NOTEBOOK_WEB_URL, url);
             notebooksMap.put(NOTEBOOK_ROLES, roles);
 
@@ -218,10 +220,10 @@ public class OneNoteDataStore extends Office365DataStore {
         }
     }
 
-    protected void getNotebooks(final Office365Client client, final Function<IGraphServiceClient, IOnenoteRequestBuilder> builder,
+    protected void getNotebooks(final Office365Client client, final Function<GraphServiceClient<Request>, OnenoteRequestBuilder> builder,
             final Consumer<Notebook> consumer) {
         try {
-            INotebookCollectionPage page = client.getNotebookPage(builder);
+            NotebookCollectionPage page = client.getNotebookPage(builder);
             while (page != null) {
                 try {
                     page.getCurrentPage().forEach(consumer);

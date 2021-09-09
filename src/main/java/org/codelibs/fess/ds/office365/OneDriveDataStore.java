@@ -51,18 +51,18 @@ import org.codelibs.fess.util.ComponentUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import com.microsoft.graph.core.ClientException;
 import com.microsoft.graph.http.GraphServiceException;
-import com.microsoft.graph.models.extensions.Drive;
-import com.microsoft.graph.models.extensions.DriveItem;
-import com.microsoft.graph.models.extensions.Hashes;
-import com.microsoft.graph.models.extensions.IGraphServiceClient;
-import com.microsoft.graph.models.extensions.Permission;
-import com.microsoft.graph.requests.extensions.IDriveItemCollectionPage;
-import com.microsoft.graph.requests.extensions.IDriveRequestBuilder;
-import com.microsoft.graph.requests.extensions.IPermissionCollectionPage;
+import com.microsoft.graph.models.Drive;
+import com.microsoft.graph.models.DriveItem;
+import com.microsoft.graph.models.Hashes;
+import com.microsoft.graph.models.Permission;
+import com.microsoft.graph.requests.DriveItemCollectionPage;
+import com.microsoft.graph.requests.DriveRequestBuilder;
+import com.microsoft.graph.requests.GraphServiceClient;
+import com.microsoft.graph.requests.PermissionCollectionPage;
+
+import okhttp3.Request;
 
 public class OneDriveDataStore extends Office365DataStore {
 
@@ -296,7 +296,7 @@ public class OneDriveDataStore extends Office365DataStore {
 
     protected void processDriveItem(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, Object> configMap,
             final Map<String, String> paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
-            final Office365Client client, final Function<IGraphServiceClient, IDriveRequestBuilder> builder, final DriveItem item,
+            final Office365Client client, final Function<GraphServiceClient<Request>, DriveRequestBuilder> builder, final DriveItem item,
             final List<String> roles) {
         final String mimetype;
         final Hashes hashes;
@@ -351,8 +351,8 @@ public class OneDriveDataStore extends Office365DataStore {
             filesMap.put(FILE_CONTENTS, getDriveItemContents(client, builder, item, ignoreError));
             filesMap.put(FILE_MIMETYPE, mimetype);
             filesMap.put(FILE_FILETYPE, filetype);
-            filesMap.put(FILE_CREATED, item.createdDateTime.getTime());
-            filesMap.put(FILE_LAST_MODIFIED, item.lastModifiedDateTime.getTime());
+            filesMap.put(FILE_CREATED, item.createdDateTime);
+            filesMap.put(FILE_LAST_MODIFIED, item.lastModifiedDateTime);
             filesMap.put(FILE_SIZE, item.size);
             filesMap.put(FILE_WEB_URL, item.webUrl);
             filesMap.put(FILE_URL, url);
@@ -434,9 +434,9 @@ public class OneDriveDataStore extends Office365DataStore {
     }
 
     protected List<String> getDriveItemPermissions(final Office365Client client,
-            final Function<IGraphServiceClient, IDriveRequestBuilder> builder, final DriveItem item) {
+            final Function<GraphServiceClient<Request>, DriveRequestBuilder> builder, final DriveItem item) {
         final List<String> permissions = new ArrayList<>();
-        IPermissionCollectionPage page = client.getDrivePermissions(builder, item.id);
+        PermissionCollectionPage page = client.getDrivePermissions(builder, item.id);
         while (page != null) {
             page.getCurrentPage().forEach(p -> {
                 if (p.grantedTo != null && p.grantedTo.user != null) {
@@ -498,23 +498,14 @@ public class OneDriveDataStore extends Office365DataStore {
                 break;
             }
         } else if (logger.isDebugEnabled()) {
-            logger.debug("No identity for permission: {}", permission.getRawObject());
+            logger.debug("No identity for permission.");
         }
     }
 
     protected String getUserEmail(final Permission permission) {
-        JsonObject rawObject = permission.getRawObject();
-        if (rawObject != null) {
-            rawObject = rawObject.getAsJsonObject("grantedTo");
-            if (rawObject != null) {
-                rawObject = rawObject.getAsJsonObject("user");
-                if (rawObject != null) {
-                    final JsonElement jsonElement = rawObject.get("email");
-                    if (jsonElement != null) {
-                        return jsonElement.getAsString();
-                    }
-                }
-            }
+        if (permission.grantedTo != null && permission.grantedTo.user != null && permission.grantedTo.user.displayName != null) {
+            // TODO email?
+            return permission.grantedTo.user.displayName;
         }
         return null;
     }
@@ -562,8 +553,8 @@ public class OneDriveDataStore extends Office365DataStore {
         }
     }
 
-    protected String getDriveItemContents(final Office365Client client, final Function<IGraphServiceClient, IDriveRequestBuilder> builder,
-            final DriveItem item, final boolean ignoreError) {
+    protected String getDriveItemContents(final Office365Client client,
+            final Function<GraphServiceClient<Request>, DriveRequestBuilder> builder, final DriveItem item, final boolean ignoreError) {
         if (item.file != null) {
             final String mimeType = item.file.mimeType;
             try (final InputStream in = client.getDriveContent(builder, item.id)) {
@@ -586,17 +577,18 @@ public class OneDriveDataStore extends Office365DataStore {
         return StringUtil.EMPTY;
     }
 
-    protected void getDriveItemsInDrive(final Office365Client client, final Function<IGraphServiceClient, IDriveRequestBuilder> builder,
-            final Consumer<DriveItem> consumer) {
+    protected void getDriveItemsInDrive(final Office365Client client,
+            final Function<GraphServiceClient<Request>, DriveRequestBuilder> builder, final Consumer<DriveItem> consumer) {
         getDriveItemChildren(client, builder, consumer, null);
     }
 
-    protected void getDriveItemChildren(final Office365Client client, final Function<IGraphServiceClient, IDriveRequestBuilder> builder,
-            final Consumer<DriveItem> consumer, final DriveItem item) {
+    protected void getDriveItemChildren(final Office365Client client,
+            final Function<GraphServiceClient<Request>, DriveRequestBuilder> builder, final Consumer<DriveItem> consumer,
+            final DriveItem item) {
         if (logger.isDebugEnabled()) {
             logger.debug("Current item: {}", item != null ? item.name + " -> " + item.webUrl : "root");
         }
-        IDriveItemCollectionPage page;
+        DriveItemCollectionPage page;
         try {
             if (item != null) {
                 consumer.accept(item);

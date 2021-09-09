@@ -23,11 +23,11 @@ import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.mylasta.direction.FessConfig;
 import org.codelibs.fess.util.ComponentUtil;
-import org.dbflute.utflute.lastadi.ContainerTestCase;
+import org.dbflute.utflute.lastaflute.LastaFluteTestCase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class OneNoteDataStoreTest extends ContainerTestCase {
+public class OneNoteDataStoreTest extends LastaFluteTestCase {
 
     private static final Logger logger = LoggerFactory.getLogger(OneNoteDataStoreTest.class);
 

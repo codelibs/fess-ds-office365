@@ -29,8 +29,8 @@ import org.codelibs.fess.util.ComponentUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.microsoft.graph.models.extensions.Group;
-import com.microsoft.graph.models.extensions.User;
+import com.microsoft.graph.models.Group;
+import com.microsoft.graph.models.User;
 import com.microsoft.graph.options.QueryOption;
 
 public abstract class Office365DataStore extends AbstractDataStore {

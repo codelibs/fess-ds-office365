@@ -15,19 +15,22 @@
  */
 package org.codelibs.fess.ds.office365;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+
 import java.util.HashMap;
 import java.util.Map;
 
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.util.ComponentUtil;
-import org.dbflute.utflute.lastadi.ContainerTestCase;
+import org.dbflute.utflute.lastaflute.LastaFluteTestCase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.microsoft.graph.models.extensions.DriveItem;
-import com.microsoft.graph.models.extensions.ItemReference;
+import com.microsoft.graph.models.DriveItem;
+import com.microsoft.graph.models.ItemReference;
 
-public class OneDriveDataStoreTest extends ContainerTestCase {
+public class OneDriveDataStoreTest extends LastaFluteTestCase {
 
     private static final Logger logger = LoggerFactory.getLogger(OneDriveDataStoreTest.class);
 
