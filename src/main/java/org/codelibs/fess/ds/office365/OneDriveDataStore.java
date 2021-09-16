@@ -437,13 +437,15 @@ public class OneDriveDataStore extends Office365DataStore {
             final Function<GraphServiceClient<Request>, DriveRequestBuilder> builder, final DriveItem item) {
         final List<String> permissions = new ArrayList<>();
         PermissionCollectionPage page = client.getDrivePermissions(builder, item.id);
-        while (page != null) {
-            page.getCurrentPage().forEach(p -> {
-                if (p.grantedTo != null && p.grantedTo.user != null) {
-                    assignPermission(client, permissions, p);
-                }
-            });
-            page = client.getNextPermissionPage(page);
+        Consumer<Permission> consumer = p -> {
+            if (p.grantedTo != null && p.grantedTo.user != null) {
+                assignPermission(client, permissions, p);
+            }
+        };
+        page.getCurrentPage().forEach(consumer);
+        while (page.getNextPage() != null) {
+            page = page.getNextPage().buildRequest().get();
+            page.getCurrentPage().forEach(consumer);
         }
         return permissions;
     }
@@ -600,7 +602,7 @@ public class OneDriveDataStore extends Office365DataStore {
             page.getCurrentPage().forEach(child -> getDriveItemChildren(client, builder, consumer, child));
             while (page.getNextPage() != null) {
                 try {
-                    page = client.getNextItemPage(page);
+                    page = page.getNextPage().buildRequest().get();
                     page.getCurrentPage().forEach(child -> getDriveItemChildren(client, builder, consumer, child));
                 } catch (final Exception e) {
                     if (logger.isDebugEnabled()) {

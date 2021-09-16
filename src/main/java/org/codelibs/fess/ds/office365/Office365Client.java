@@ -18,42 +18,35 @@ package org.codelibs.fess.ds.office365;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import javax.annotation.Nonnull;
-
 import org.codelibs.core.lang.StringUtil;
-import org.codelibs.core.timer.TimeoutManager;
-import org.codelibs.core.timer.TimeoutTarget;
-import org.codelibs.core.timer.TimeoutTask;
 import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
 import org.codelibs.fess.exception.DataStoreException;
 import org.codelibs.fess.util.ComponentUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.azure.identity.ClientSecretCredential;
+import com.azure.identity.ClientSecretCredentialBuilder;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
-import com.microsoft.aad.adal4j.AuthenticationContext;
-import com.microsoft.aad.adal4j.AuthenticationResult;
-import com.microsoft.aad.adal4j.ClientCredential;
-import com.microsoft.graph.authentication.IAuthenticationProvider;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.microsoft.graph.authentication.TokenCredentialAuthProvider;
 import com.microsoft.graph.http.GraphServiceException;
 import com.microsoft.graph.logger.DefaultLogger;
 import com.microsoft.graph.logger.LoggerLevel;
+import com.microsoft.graph.models.Channel;
+import com.microsoft.graph.models.ChatMessage;
 import com.microsoft.graph.models.Drive;
 import com.microsoft.graph.models.Group;
 import com.microsoft.graph.models.OnenotePage;
@@ -62,6 +55,8 @@ import com.microsoft.graph.models.Site;
 import com.microsoft.graph.models.User;
 import com.microsoft.graph.options.Option;
 import com.microsoft.graph.options.QueryOption;
+import com.microsoft.graph.requests.ChannelCollectionPage;
+import com.microsoft.graph.requests.ChatMessageCollectionPage;
 import com.microsoft.graph.requests.DriveCollectionPage;
 import com.microsoft.graph.requests.DriveItemCollectionPage;
 import com.microsoft.graph.requests.DriveRequestBuilder;
@@ -74,8 +69,8 @@ import com.microsoft.graph.requests.OnenoteRequestBuilder;
 import com.microsoft.graph.requests.OnenoteSectionCollectionPage;
 import com.microsoft.graph.requests.OnenoteSectionRequestBuilder;
 import com.microsoft.graph.requests.PermissionCollectionPage;
-import com.microsoft.graph.requests.SiteCollectionPage;
 import com.microsoft.graph.requests.UserCollectionPage;
+import com.microsoft.graph.serializer.AdditionalDataManager;
 
 import okhttp3.Request;
 
@@ -95,20 +90,32 @@ public class Office365Client implements Closeable {
 
     protected GraphServiceClient<Request> client;
     protected Map<String, String> params;
-    protected TimeoutTask refreshTokenTask;
     protected LoadingCache<String, UserType> userTypeCache;
     protected LoadingCache<String, String[]> groupIdCache;
 
     public Office365Client(final Map<String, String> params) {
         this.params = params;
 
-        final AuthenticationProvider authenticationProvider = new AuthenticationProvider(params);
-        refreshTokenTask = TimeoutManager.getInstance().addTimeoutTarget(authenticationProvider,
-                Integer.parseInt(params.getOrDefault(REFRESH_TOKEN_INTERVAL, "3540")), true);
+        String tenant = params.getOrDefault(TENANT_PARAM, StringUtil.EMPTY);
+        String clientId = params.getOrDefault(CLIENT_ID_PARAM, StringUtil.EMPTY);
+        String clientSecret = params.getOrDefault(CLIENT_SECRET_PARAM, StringUtil.EMPTY);
+        if (tenant.isEmpty() || clientId.isEmpty() || clientSecret.isEmpty()) {
+            throw new DataStoreException("parameter '" + //
+                    TENANT_PARAM + "', '" + //
+                    CLIENT_ID_PARAM + "', '" + //
+                    CLIENT_SECRET_PARAM + "' is required");
+        }
+        final ClientSecretCredential clientSecretCredential = new ClientSecretCredentialBuilder()//
+                .clientId(clientId)//
+                .clientSecret(clientSecret)//
+                .tenantId(tenant)//
+                .build();
+
+        final TokenCredentialAuthProvider tokenCredAuthProvider = new TokenCredentialAuthProvider(clientSecretCredential);
 
         try {
             client = GraphServiceClient.builder() //
-                    .authenticationProvider(authenticationProvider) //
+                    .authenticationProvider(tokenCredAuthProvider) //
                     .logger(new DefaultLogger() {
                         @Override
                         public void logDebug(final String message) {
@@ -120,17 +127,13 @@ public class Office365Client implements Closeable {
                         @Override
                         public void logError(final String message, final Throwable t) {
                             if (t instanceof GraphServiceException) {
-                                final GraphServiceException e = (GraphServiceException) t;
-                                if (expired(e) || e.getResponseCode() == 404) {
-                                    logger.debug("[Office365Client] " + message, t);
-                                } else {
-                                    logger.warn("[Office365Client] " + message, t);
-                                }
+                                logger.warn("[Office365Client] " + message, t);
                             } else {
                                 logger.error("[Office365Client] " + message, t);
                             }
                         }
-                    }).buildClient();
+                    })//
+                    .buildClient();
         } catch (final Exception e) {
             throw new DataStoreException("Failed to create a client.", e);
         }
@@ -167,9 +170,8 @@ public class Office365Client implements Closeable {
 
     @Override
     public void close() {
-        if (refreshTokenTask != null) {
-            refreshTokenTask.cancel();
-        }
+        userTypeCache.invalidateAll();
+        groupIdCache.invalidateAll();
     }
 
     public enum UserType {
@@ -211,23 +213,12 @@ public class Office365Client implements Closeable {
     }
 
     public void getUsers(final List<QueryOption> options, final Consumer<User> consumer) {
-        UserCollectionPage page = getUserPage(options);
+        UserCollectionPage page = client.users().buildRequest(options).get();
         page.getCurrentPage().stream().forEach(consumer::accept);
         while (page.getNextPage() != null) {
-            page = getNextUserPage(page);
+            page = page.getNextPage().buildRequest().get();
             page.getCurrentPage().stream().forEach(consumer::accept);
         }
-    }
-
-    protected UserCollectionPage getUserPage(final List<? extends Option> options) {
-        return client.users().buildRequest(options).get();
-    }
-
-    protected UserCollectionPage getNextUserPage(final UserCollectionPage page) {
-        if (page.getNextPage() == null) {
-            return null;
-        }
-        return page.getNextPage().buildRequest().get();
     }
 
     public String[] getGroupIdsByEmail(final String email) {
@@ -240,30 +231,12 @@ public class Office365Client implements Closeable {
     }
 
     public void getGroups(final List<QueryOption> options, final Consumer<Group> consumer) {
-        GroupCollectionPage page = getGroupPage(options);
+        GroupCollectionPage page = client.groups().buildRequest(options).get();
         page.getCurrentPage().stream().forEach(consumer::accept);
         while (page.getNextPage() != null) {
-            page = getNextGroupPage(page);
+            page = page.getNextPage().buildRequest().get();
             page.getCurrentPage().forEach(consumer::accept);
         }
-    }
-
-    protected GroupCollectionPage getGroupPage(final List<? extends Option> options) {
-        return client.groups().buildRequest(options).get();
-    }
-
-    protected GroupCollectionPage getNextGroupPage(final GroupCollectionPage page) {
-        if (page.getNextPage() == null) {
-            return null;
-        }
-        return page.getNextPage().buildRequest().get();
-    }
-
-    public DriveItemCollectionPage getNextItemPage(final DriveItemCollectionPage page) {
-        if (page.getNextPage() == null) {
-            return null;
-        }
-        return page.getNextPage().buildRequest().get();
     }
 
     public NotebookCollectionPage getNotebookPage(final Function<GraphServiceClient<Request>, OnenoteRequestBuilder> builder) {
@@ -317,124 +290,73 @@ public class Office365Client implements Closeable {
         return sections.stream().map(section -> getSectionContents(builder.apply(client), section)).collect(Collectors.joining("\n"));
     }
 
-    public NotebookCollectionPage getNextNotebookPage(final NotebookCollectionPage page) {
-        if (page.getNextPage() == null) {
-            return null;
-        }
-        return page.getNextPage().buildRequest().get();
-    }
-
     public Site getSite(final String id) {
         return client.sites(StringUtil.isNotBlank(id) ? id : "root").buildRequest().get();
     }
 
-    protected boolean expired(final GraphServiceException e) {
-        if (logger.isDebugEnabled()) {
-            logger.debug("Failed to process a request.", e);
-        }
-        return INVALID_AUTHENTICATION_TOKEN.equals(e.getServiceError().code);
-    }
-
-    public SiteCollectionPage getSites() {
-        return client.sites().buildRequest().get();
-    }
-
-    public SiteCollectionPage getNextSitePage(final SiteCollectionPage page) {
-        if (page.getNextPage() == null) {
-            return null;
-        }
-        return page.getNextPage().buildRequest().get();
-    }
+    //    public SiteCollectionPage getSites() {
+    //        return client.sites().buildRequest().get();
+    //    }
+    //
+    //    public SiteCollectionPage getNextSitePage(final SiteCollectionPage page) {
+    //        if (page.getNextPage() == null) {
+    //            return null;
+    //        }
+    //        return page.getNextPage().buildRequest().get();
+    //    }
 
     public Drive getDrive(final String driveId) {
         return client.drives(driveId).buildRequest().get();
     }
 
-    public void getDrives(final Consumer<Drive> consumer) {
-        DriveCollectionPage page = getDrives();
+    // for testing
+    protected void getDrives(final Consumer<Drive> consumer) {
+        DriveCollectionPage page = client.drives().buildRequest().get();
         page.getCurrentPage().stream().forEach(consumer::accept);
         while (page.getNextPage() != null) {
-            page = getNextDrivePage(page);
+            page = page.getNextPage().buildRequest().get();
             page.getCurrentPage().stream().forEach(consumer::accept);
         }
     }
 
-    protected DriveCollectionPage getDrives() {
-        return client.drives().buildRequest().get();
-    }
-
-    protected DriveCollectionPage getNextDrivePage(final DriveCollectionPage page) {
-        if (page.getNextPage() == null) {
-            return null;
-        }
-        return page.getNextPage().buildRequest().get();
-    }
-
-    public PermissionCollectionPage getNextPermissionPage(final PermissionCollectionPage page) {
-        if (page.getNextPage() == null) {
-            return null;
-        }
-        return page.getNextPage().buildRequest().get();
-    }
-
-    protected static class AuthenticationProvider implements IAuthenticationProvider, TimeoutTarget {
-
-        protected final String tenant;
-        protected final String clientId;
-        protected final String clientSecret;
-        protected final long accessTimeout;
-        protected String accessToken;
-
-        protected AuthenticationProvider(final Map<String, String> params) {
-            tenant = params.getOrDefault(TENANT_PARAM, StringUtil.EMPTY);
-            clientId = params.getOrDefault(CLIENT_ID_PARAM, StringUtil.EMPTY);
-            clientSecret = params.getOrDefault(CLIENT_SECRET_PARAM, StringUtil.EMPTY);
-            if (tenant.isEmpty() || clientId.isEmpty() || clientSecret.isEmpty()) {
-                throw new DataStoreException("parameter '" + //
-                        TENANT_PARAM + "', '" + //
-                        CLIENT_ID_PARAM + "', '" + //
-                        CLIENT_SECRET_PARAM + "' is required");
-            }
-
-            this.accessTimeout = Long.parseLong(params.getOrDefault(ACCESS_TIMEOUT, "30000"));
-
-            refreshToken();
-        }
-
-        protected void refreshToken() {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Refreshing access token.");
-            }
-            final ExecutorService executorService = Executors.newFixedThreadPool(1);
-            try {
-                final AuthenticationContext context =
-                        new AuthenticationContext("https://login.microsoftonline.com/" + tenant + "/", false, executorService);
-                final AuthenticationResult result =
-                        context.acquireToken("https://graph.microsoft.com", new ClientCredential(clientId, clientSecret), null)
-                                .get(accessTimeout, TimeUnit.MILLISECONDS);
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Access Token: {}", result.getAccessToken());
+    public void geTeams(final List<QueryOption> options, final Consumer<Group> consumer) {
+        GroupCollectionPage page = client.groups().buildRequest(options).get();
+        Consumer<Group> filter = g -> {
+            AdditionalDataManager additionalDataManager = g.additionalDataManager();
+            if (additionalDataManager != null) {
+                JsonElement jsonElement = additionalDataManager.get("resourceProvisioningOptions");
+                JsonArray array = jsonElement.getAsJsonArray();
+                for (int i = 0; i < array.size(); i++) {
+                    if ("Team".equals(array.get(i).getAsString())) {
+                        consumer.accept(g);
+                        return;
+                    }
                 }
-                accessToken = result.getAccessToken();
-            } catch (final Exception e) {
-                throw new DataStoreException("Failed to get an access token.", e);
-            } finally {
-                executorService.shutdown();
             }
+        };
+        page.getCurrentPage().stream().forEach(filter);
+        while (page.getNextPage() != null) {
+            page = page.getNextPage().buildRequest().get();
+            page.getCurrentPage().forEach(filter);
         }
+    }
 
-        @Override
-        public void expired() {
-            try {
-                refreshToken();
-            } catch (final Exception e) {
-                logger.warn("Failed to refresh an access token.", e);
-            }
+    public void getChannels(final List<QueryOption> options, final Consumer<Channel> consumer, final String teamId) {
+        ChannelCollectionPage page = client.teams(teamId).channels().buildRequest(options).get();
+        page.getCurrentPage().forEach(consumer::accept);
+        while (page.getNextPage() != null) {
+            page = page.getNextPage().buildRequest().get();
+            page.getCurrentPage().forEach(consumer::accept);
         }
+    }
 
-        @Override
-        public CompletableFuture<String> getAuthorizationTokenAsync(@Nonnull final URL requestUrl) {
-            return CompletableFuture.completedFuture(accessToken);
+    public void getChatMessages(final List<QueryOption> options, final Consumer<ChatMessage> consumer, final String teamId,
+            final String channelId) {
+        ChatMessageCollectionPage page = client.teams(teamId).channels(channelId).messages().buildRequest(options).get();
+        page.getCurrentPage().stream().forEach(consumer::accept);
+        while (page.getNextPage() != null) {
+            page = page.getNextPage().buildRequest().get();
+            page.getCurrentPage().forEach(consumer::accept);
         }
     }
 
