@@ -8,4 +8,7 @@
     <component name="oneNoteDataStore" class="org.codelibs.fess.ds.office365.OneNoteDataStore">
         <postConstruct name="register"></postConstruct>
     </component>
+    <component name="teamsDataStore" class="org.codelibs.fess.ds.office365.TeamsDataStore">
+        <postConstruct name="register"></postConstruct>
+    </component>
 </components>

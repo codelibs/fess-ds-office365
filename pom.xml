@@ -44,9 +44,34 @@
 							<createDependencyReducedPom>false</createDependencyReducedPom>
 							<artifactSet>
 								<includes>
+									<include>com.azure:azure-core</include>
+									<include>com.azure:azure-core-http-netty</include>
+									<include>com.azure:azure-identity</include>
+									<include>com.fasterxml.jackson.datatype:jackson-datatype-jsr310</include>
+									<include>com.fasterxml.jackson.dataformat:jackson-dataformat-xml</include>
+									<include>com.microsoft.azure:msal4j</include>
 									<include>com.microsoft.graph:microsoft-graph</include>
+									<include>com.microsoft.graph:microsoft-graph-core</include>
+									<include>io.projectreactor.netty:reactor-netty</include>
+									<include>io.projectreactor.netty:reactor-netty-http</include>
+									<include>io.projectreactor.netty:reactor-netty-core</include>
+									<include>io.projectreactor:reactor-core</include>
+									<include>io.netty:netty-codec-dns</include>
+									<include>io.netty:netty-codec-http2</include>
+									<include>io.netty:netty-resolver-dns</include>
+									<include>io.netty:netty-transport-native-unix-common</include>
+									<include>org.reactivestreams:reactive-streams</include>
 								</includes>
 							</artifactSet>
+							<filters>
+								<filter>
+									<artifact>*:*</artifact>
+									<excludes>
+										<exclude>META-INF/*.SF</exclude>
+										<exclude>META-INF/*.RSA</exclude>
+									</excludes>
+								</filter>
+							</filters>
 						</configuration>
 					</execution>
 				</executions>

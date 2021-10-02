@@ -27,6 +27,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
 import org.codelibs.fess.exception.DataStoreException;
@@ -96,9 +97,9 @@ public class Office365Client implements Closeable {
     public Office365Client(final Map<String, String> params) {
         this.params = params;
 
-        String tenant = params.getOrDefault(TENANT_PARAM, StringUtil.EMPTY);
-        String clientId = params.getOrDefault(CLIENT_ID_PARAM, StringUtil.EMPTY);
-        String clientSecret = params.getOrDefault(CLIENT_SECRET_PARAM, StringUtil.EMPTY);
+        final String tenant = params.getOrDefault(TENANT_PARAM, StringUtil.EMPTY);
+        final String clientId = params.getOrDefault(CLIENT_ID_PARAM, StringUtil.EMPTY);
+        final String clientSecret = params.getOrDefault(CLIENT_SECRET_PARAM, StringUtil.EMPTY);
         if (tenant.isEmpty() || clientId.isEmpty() || clientSecret.isEmpty()) {
             throw new DataStoreException("parameter '" + //
                     TENANT_PARAM + "', '" + //
@@ -203,9 +204,8 @@ public class Office365Client implements Closeable {
             final String id) {
         if (id == null) {
             return builder.apply(client).root().children().buildRequest().get();
-        } else {
-            return builder.apply(client).items(id).children().buildRequest().get();
         }
+        return builder.apply(client).items(id).children().buildRequest().get();
     }
 
     public User getUser(final String userId, final List<? extends Option> options) {
@@ -214,10 +214,10 @@ public class Office365Client implements Closeable {
 
     public void getUsers(final List<QueryOption> options, final Consumer<User> consumer) {
         UserCollectionPage page = client.users().buildRequest(options).get();
-        page.getCurrentPage().stream().forEach(consumer::accept);
+        page.getCurrentPage().forEach(consumer::accept);
         while (page.getNextPage() != null) {
             page = page.getNextPage().buildRequest().get();
-            page.getCurrentPage().stream().forEach(consumer::accept);
+            page.getCurrentPage().forEach(consumer::accept);
         }
     }
 
@@ -232,11 +232,23 @@ public class Office365Client implements Closeable {
 
     public void getGroups(final List<QueryOption> options, final Consumer<Group> consumer) {
         GroupCollectionPage page = client.groups().buildRequest(options).get();
-        page.getCurrentPage().stream().forEach(consumer::accept);
+        page.getCurrentPage().forEach(consumer::accept);
         while (page.getNextPage() != null) {
             page = page.getNextPage().buildRequest().get();
             page.getCurrentPage().forEach(consumer::accept);
         }
+    }
+
+    public Group getGroupById(final String id) {
+        final List<Group> groupList = new ArrayList<>();
+        getGroups(Collections.singletonList(new QueryOption("$filter", "id eq '" + id + "'")), g -> groupList.add(g));
+        if (logger.isDebugEnabled()) {
+            groupList.forEach(ToStringBuilder::reflectionToString);
+        }
+        if (groupList.size() == 1) {
+            return groupList.get(0);
+        }
+        return null;
     }
 
     public NotebookCollectionPage getNotebookPage(final Function<GraphServiceClient<Request>, OnenoteRequestBuilder> builder) {
@@ -312,20 +324,20 @@ public class Office365Client implements Closeable {
     // for testing
     protected void getDrives(final Consumer<Drive> consumer) {
         DriveCollectionPage page = client.drives().buildRequest().get();
-        page.getCurrentPage().stream().forEach(consumer::accept);
+        page.getCurrentPage().forEach(consumer::accept);
         while (page.getNextPage() != null) {
             page = page.getNextPage().buildRequest().get();
-            page.getCurrentPage().stream().forEach(consumer::accept);
+            page.getCurrentPage().forEach(consumer::accept);
         }
     }
 
     public void geTeams(final List<QueryOption> options, final Consumer<Group> consumer) {
         GroupCollectionPage page = client.groups().buildRequest(options).get();
-        Consumer<Group> filter = g -> {
-            AdditionalDataManager additionalDataManager = g.additionalDataManager();
+        final Consumer<Group> filter = g -> {
+            final AdditionalDataManager additionalDataManager = g.additionalDataManager();
             if (additionalDataManager != null) {
-                JsonElement jsonElement = additionalDataManager.get("resourceProvisioningOptions");
-                JsonArray array = jsonElement.getAsJsonArray();
+                final JsonElement jsonElement = additionalDataManager.get("resourceProvisioningOptions");
+                final JsonArray array = jsonElement.getAsJsonArray();
                 for (int i = 0; i < array.size(); i++) {
                     if ("Team".equals(array.get(i).getAsString())) {
                         consumer.accept(g);
@@ -334,7 +346,7 @@ public class Office365Client implements Closeable {
                 }
             }
         };
-        page.getCurrentPage().stream().forEach(filter);
+        page.getCurrentPage().forEach(filter);
         while (page.getNextPage() != null) {
             page = page.getNextPage().buildRequest().get();
             page.getCurrentPage().forEach(filter);
@@ -353,7 +365,7 @@ public class Office365Client implements Closeable {
     public void getChatMessages(final List<QueryOption> options, final Consumer<ChatMessage> consumer, final String teamId,
             final String channelId) {
         ChatMessageCollectionPage page = client.teams(teamId).channels(channelId).messages().buildRequest(options).get();
-        page.getCurrentPage().stream().forEach(consumer::accept);
+        page.getCurrentPage().forEach(consumer::accept);
         while (page.getNextPage() != null) {
             page = page.getNextPage().buildRequest().get();
             page.getCurrentPage().forEach(consumer::accept);

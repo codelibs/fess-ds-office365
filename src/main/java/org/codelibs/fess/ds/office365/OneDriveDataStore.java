@@ -437,7 +437,7 @@ public class OneDriveDataStore extends Office365DataStore {
             final Function<GraphServiceClient<Request>, DriveRequestBuilder> builder, final DriveItem item) {
         final List<String> permissions = new ArrayList<>();
         PermissionCollectionPage page = client.getDrivePermissions(builder, item.id);
-        Consumer<Permission> consumer = p -> {
+        final Consumer<Permission> consumer = p -> {
             if (p.grantedTo != null && p.grantedTo.user != null) {
                 assignPermission(client, permissions, p);
             }
@@ -538,9 +538,8 @@ public class OneDriveDataStore extends Office365DataStore {
         if (CRAWLER_TYPE_DRIVE.equals(configMap.get(CURRENT_CRAWLER))) {
             final Drive drive = (Drive) configMap.get(DRIVE_INFO);
             return baseUrl + "/" + drive.name + "/" + path;
-        } else {
-            return baseUrl + "/Documents/" + path;
         }
+        return baseUrl + "/Documents/" + path;
     }
 
     protected String encodeUrl(final String s) {

@@ -26,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.microsoft.graph.models.Drive;
+import com.microsoft.graph.models.Group;
 import com.microsoft.graph.models.User;
 
 public class Office365ClientTest extends LastaFluteTestCase {
@@ -120,11 +121,13 @@ public class Office365ClientTest extends LastaFluteTestCase {
         client.geTeams(Collections.emptyList(), g -> {
             logger.info(ToStringBuilder.reflectionToString(g));
             assertNotNull(g.id);
+            Group g2 = client.getGroupById(g.id);
+            assertEquals(g.id, g2.id);
             client.getChannels(Collections.emptyList(), c -> {
                 logger.info(ToStringBuilder.reflectionToString(c));
                 client.getChatMessages(Collections.emptyList(), m -> {
                     logger.info(ToStringBuilder.reflectionToString(m));
-
+                    logger.info(m.body.content);
                 }, g.id, c.id);
             }, g.id);
         });
