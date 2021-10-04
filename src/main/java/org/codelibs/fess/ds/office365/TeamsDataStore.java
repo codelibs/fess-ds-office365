@@ -285,7 +285,7 @@ public class TeamsDataStore extends Office365DataStore {
             failureUrlService.store(dataConfig, t.getClass().getCanonicalName(), message.webUrl, t);
         }
 
-        if (parent != null || ((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
+        if (((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
             return;
         }
 
