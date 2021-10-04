@@ -128,7 +128,11 @@ public class Office365Client implements Closeable {
                         @Override
                         public void logError(final String message, final Throwable t) {
                             if (t instanceof GraphServiceException) {
-                                logger.warn("[Office365Client] " + message, t);
+                                if (((GraphServiceException) t).getResponseCode() == 404) {
+                                    logger.debug("[Office365Client] " + message, t);
+                                } else {
+                                    logger.warn("[Office365Client] " + message, t);
+                                }
                             } else {
                                 logger.error("[Office365Client] " + message, t);
                             }
