@@ -127,7 +127,13 @@ public class Office365ClientTest extends LastaFluteTestCase {
                 logger.info(ToStringBuilder.reflectionToString(c));
                 client.getChatMessages(Collections.emptyList(), m -> {
                     logger.info(ToStringBuilder.reflectionToString(m));
+                    logger.info(m.body.contentType.toString());
                     logger.info(m.body.content);
+                    client.getReplyMessages(Collections.emptyList(), r -> {
+                        logger.info(ToStringBuilder.reflectionToString(r));
+                        logger.info(r.body.contentType.toString());
+                        logger.info(r.body.content);
+                    }, g.id, c.id, m.id);
                 }, g.id, c.id);
             }, g.id);
         });

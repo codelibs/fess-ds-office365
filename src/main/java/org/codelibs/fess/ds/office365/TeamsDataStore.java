@@ -15,6 +15,8 @@
  */
 package org.codelibs.fess.ds.office365;
 
+import java.io.IOException;
+import java.io.StringReader;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Collections;
@@ -27,8 +29,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.builder.ToStringBuilder;
+import org.apache.lucene.analysis.charfilter.HTMLStripCharFilter;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.stream.StreamUtil;
+import org.codelibs.fesen.FesenException;
 import org.codelibs.fess.Constants;
 import org.codelibs.fess.app.service.FailureUrlService;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
@@ -44,7 +48,6 @@ import org.slf4j.LoggerFactory;
 import com.microsoft.graph.models.ChatMessage;
 import com.microsoft.graph.models.ChatMessageFromIdentitySet;
 import com.microsoft.graph.models.Group;
-import com.microsoft.graph.requests.ChatMessageCollectionPage;
 
 public class TeamsDataStore extends Office365DataStore {
 
@@ -120,7 +123,13 @@ public class TeamsDataStore extends Office365DataStore {
                 final String channelId = (String) configMap.get(CHANNEL_ID);
                 if (StringUtil.isNotBlank(channelId)) {
                     client.getChatMessages(Collections.emptyList(), m -> {
-                        processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, g, m, null);
+                        final Map<String, Object> message =
+                                processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, g, m, null);
+                        if (!((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
+                            client.getReplyMessages(Collections.emptyList(), r -> {
+                                processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, g, m, message);
+                            }, teamId, channelId, (String) message.get(MESSAGE_ID));
+                        }
                     }, teamId, channelId);
                 } else {
                     client.getChannels(Collections.emptyList(), c -> {
@@ -130,7 +139,13 @@ public class TeamsDataStore extends Office365DataStore {
                             logger.info("Channel: {} : {}", c.id, c.displayName);
                         }
                         client.getChatMessages(Collections.emptyList(), m -> {
-                            processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, g, m, null);
+                            final Map<String, Object> message =
+                                    processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, g, m, null);
+                            if (!((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
+                                client.getReplyMessages(Collections.emptyList(), r -> {
+                                    processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, g, m, message);
+                                }, teamId, c.id, (String) message.get(MESSAGE_ID));
+                            }
                         }, teamId, c.id);
                     }, teamId);
                 }
@@ -148,7 +163,13 @@ public class TeamsDataStore extends Office365DataStore {
                             logger.info("Channel: {} : {}", c.id, c.displayName);
                         }
                         client.getChatMessages(Collections.emptyList(), m -> {
-                            processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, g, m, null);
+                            final Map<String, Object> message =
+                                    processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, g, m, null);
+                            if (!((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
+                                client.getReplyMessages(Collections.emptyList(), r -> {
+                                    processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, g, m, message);
+                                }, g.id, c.id, (String) message.get(MESSAGE_ID));
+                            }
                         }, g.id, c.id);
                     }, g.id);
                 });
@@ -194,9 +215,9 @@ public class TeamsDataStore extends Office365DataStore {
         return new Office365Client(params);
     }
 
-    protected void processChatMessage(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, Object> configMap,
-            final Map<String, String> paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
-            final Group group, final ChatMessage message, final Map<String, Object> parent) {
+    protected Map<String, Object> processChatMessage(final DataConfig dataConfig, final IndexUpdateCallback callback,
+            final Map<String, Object> configMap, final Map<String, String> paramMap, final Map<String, String> scriptMap,
+            final Map<String, Object> defaultDataMap, final Group group, final ChatMessage message, final Map<String, Object> parent) {
         if (logger.isDebugEnabled()) {
             logger.debug(ToStringBuilder.reflectionToString(message));
         } else {
@@ -285,20 +306,7 @@ public class TeamsDataStore extends Office365DataStore {
             failureUrlService.store(dataConfig, t.getClass().getCanonicalName(), message.webUrl, t);
         }
 
-        if (((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
-            return;
-        }
-
-        ChatMessageCollectionPage page = message.replies;
-        if (page != null) {
-            page.getCurrentPage().forEach(
-                    m -> processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, group, m, messageMap));
-            while (page.getNextPage() != null) {
-                page = page.getNextPage().buildRequest().get();
-                page.getCurrentPage().forEach(m -> processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap,
-                        group, m, messageMap));
-            }
-        }
+        return messageMap;
     }
 
     protected String getTitle(final Map<String, Object> configMap, final ChatMessage message) {
@@ -329,7 +337,17 @@ public class TeamsDataStore extends Office365DataStore {
     protected String getConent(final Map<String, Object> configMap, final ChatMessage message) {
         final StringBuilder bodyBuf = new StringBuilder(1000);
         if (message.body != null) {
-            bodyBuf.append(message.body.content);
+            switch (message.body.contentType) {
+            case HTML:
+                bodyBuf.append(stripHtmlTags(message.body.content));
+                break;
+            case TEXT:
+                bodyBuf.append(message.body.content);
+                break;
+            default:
+                bodyBuf.append(message.body.content);
+                break;
+            }
         }
         if (((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue() && message.attachments != null) {
             message.attachments.forEach(a -> {
@@ -344,4 +362,25 @@ public class TeamsDataStore extends Office365DataStore {
         return bodyBuf.toString();
     }
 
+    protected String stripHtmlTags(String value) {
+        if (value == null) {
+            return "";
+        }
+
+        if (value.contains("<") == false || value.contains(">") == false) {
+            return value;
+        }
+
+        StringBuilder builder = new StringBuilder();
+        try (HTMLStripCharFilter filter = new HTMLStripCharFilter(new StringReader(value))) {
+            int ch;
+            while ((ch = filter.read()) != -1) {
+                builder.append((char) ch);
+            }
+        } catch (IOException e) {
+            throw new FesenException(e);
+        }
+
+        return builder.toString();
+    }
 }
