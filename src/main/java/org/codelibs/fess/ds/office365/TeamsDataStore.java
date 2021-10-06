@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.io.StringReader;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -26,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.builder.ToStringBuilder;
@@ -38,13 +40,18 @@ import org.codelibs.fess.app.service.FailureUrlService;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.exception.MultipleCrawlingAccessException;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
+import org.codelibs.fess.ds.office365.Office365Client.UserType;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.exception.DataStoreException;
 import org.codelibs.fess.helper.PermissionHelper;
+import org.codelibs.fess.helper.SystemHelper;
 import org.codelibs.fess.util.ComponentUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.microsoft.graph.models.AadUserConversationMember;
+import com.microsoft.graph.models.Channel;
+import com.microsoft.graph.models.Chat;
 import com.microsoft.graph.models.ChatMessage;
 import com.microsoft.graph.models.ChatMessageFromIdentitySet;
 import com.microsoft.graph.models.Group;
@@ -60,6 +67,7 @@ public class TeamsDataStore extends Office365DataStore {
     // parameters
     private static final String TEAM_ID = "team_id";
     private static final String CHANNEL_ID = "channel_id";
+    private static final String CHAT_ID = "chat_id";
     protected static final String NUMBER_OF_THREADS = "number_of_threads";
     protected static final String DEFAULT_PERMISSIONS = "default_permissions";
     private static final String IGNORE_REPLIES = "ignore_replies";
@@ -91,6 +99,9 @@ public class TeamsDataStore extends Office365DataStore {
     private static final String MESSAGE_WEB_URL = "web_url";
     private static final String MESSAGE_ROLES = "roles";
     private static final String PARENT = "parent";
+    private static final String TEAM = "team";
+    private static final String CHANNEL = "channel";
+    private static final String CHAT = "chat";
 
     @Override
     protected String getName() {
@@ -103,6 +114,7 @@ public class TeamsDataStore extends Office365DataStore {
         final Map<String, Object> configMap = new HashMap<>();
         configMap.put(TEAM_ID, getTeamId(paramMap));
         configMap.put(CHANNEL_ID, getChannelId(paramMap));
+        configMap.put(CHAT_ID, getChatId(paramMap));
         configMap.put(IGNORE_REPLIES, isIgnoreReplies(paramMap));
         configMap.put(APPEND_ATTACHMENT, isAppendAttachment(paramMap));
         configMap.put(TITLE_DATEFORMAT, getTitleDateformat(paramMap));
@@ -114,66 +126,8 @@ public class TeamsDataStore extends Office365DataStore {
 
         final ExecutorService executorService = newFixedThreadPool(Integer.parseInt(paramMap.getOrDefault(NUMBER_OF_THREADS, "1")));
         try (final Office365Client client = createClient(paramMap)) {
-            final String teamId = (String) configMap.get(TEAM_ID);
-            if (StringUtil.isNotBlank(teamId)) {
-                final Group g = client.getGroupById(teamId);
-                if (g == null) {
-                    throw new DataStoreException("Could not find a team: " + teamId);
-                }
-                final String channelId = (String) configMap.get(CHANNEL_ID);
-                if (StringUtil.isNotBlank(channelId)) {
-                    client.getChatMessages(Collections.emptyList(), m -> {
-                        final Map<String, Object> message =
-                                processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, g, m, null);
-                        if (!((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
-                            client.getReplyMessages(Collections.emptyList(), r -> {
-                                processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, g, m, message);
-                            }, teamId, channelId, (String) message.get(MESSAGE_ID));
-                        }
-                    }, teamId, channelId);
-                } else {
-                    client.getChannels(Collections.emptyList(), c -> {
-                        if (logger.isDebugEnabled()) {
-                            logger.debug(ToStringBuilder.reflectionToString(c));
-                        } else {
-                            logger.info("Channel: {} : {}", c.id, c.displayName);
-                        }
-                        client.getChatMessages(Collections.emptyList(), m -> {
-                            final Map<String, Object> message =
-                                    processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, g, m, null);
-                            if (!((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
-                                client.getReplyMessages(Collections.emptyList(), r -> {
-                                    processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, g, m, message);
-                                }, teamId, c.id, (String) message.get(MESSAGE_ID));
-                            }
-                        }, teamId, c.id);
-                    }, teamId);
-                }
-            } else {
-                client.geTeams(Collections.emptyList(), g -> {
-                    if (logger.isDebugEnabled()) {
-                        logger.debug(ToStringBuilder.reflectionToString(g));
-                    } else {
-                        logger.info("Team: {} : {}", g.id, g.displayName);
-                    }
-                    client.getChannels(Collections.emptyList(), c -> {
-                        if (logger.isDebugEnabled()) {
-                            logger.debug(ToStringBuilder.reflectionToString(c));
-                        } else {
-                            logger.info("Channel: {} : {}", c.id, c.displayName);
-                        }
-                        client.getChatMessages(Collections.emptyList(), m -> {
-                            final Map<String, Object> message =
-                                    processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, g, m, null);
-                            if (!((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
-                                client.getReplyMessages(Collections.emptyList(), r -> {
-                                    processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, g, m, message);
-                                }, g.id, c.id, (String) message.get(MESSAGE_ID));
-                            }
-                        }, g.id, c.id);
-                    }, g.id);
-                });
-            }
+            processTeamMessages(dataConfig, callback, paramMap, scriptMap, defaultDataMap, configMap, client);
+            processChatMessages(dataConfig, callback, paramMap, scriptMap, defaultDataMap, configMap, client);
 
             if (logger.isDebugEnabled()) {
                 logger.debug("Shutting down thread executor.");
@@ -184,6 +138,149 @@ public class TeamsDataStore extends Office365DataStore {
             throw new DataStoreException("Interrupted.", e);
         } finally {
             executorService.shutdownNow();
+        }
+    }
+
+    protected void processChatMessages(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Map<String, Object> configMap,
+            final Office365Client client) {
+        final String chatId = (String) configMap.get(CHAT_ID);
+        if (StringUtil.isNotBlank(chatId)) {
+            final Chat c = client.getChatById(chatId);
+            if (c == null) {
+                throw new DataStoreException("Could not find a chat: " + chatId);
+            }
+            client.getChatMessages(Collections.emptyList(), m -> {
+                final Map<String, Object> message = processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap,
+                        getGroupRoles(client, c), m, map -> {
+                            map.put(CHAT, c);
+                        });
+                if (!((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
+                    client.getChatReplyMessages(Collections.emptyList(), r -> {
+                        processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, getGroupRoles(client, c),
+                                r, map -> {
+                                    map.put(CHAT, c);
+                                    map.put(PARENT, message);
+                                });
+                    }, c.id, (String) message.get(MESSAGE_ID));
+                }
+            }, c.id);
+        } else if (chatId == null) {
+            client.getChats(Collections.emptyList(), c -> {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Chat: {} : {}", c.id, ToStringBuilder.reflectionToString(c));
+                } else {
+                    logger.info("Chat: {} : {}", c.id, c.topic);
+                }
+                client.getChatMessages(Collections.emptyList(), m -> {
+                    final Map<String, Object> message = processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap,
+                            defaultDataMap, getGroupRoles(client, c), m, map -> {
+                                map.put(CHAT, c);
+                            });
+                    if (!((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
+                        client.getChatReplyMessages(Collections.emptyList(), r -> {
+                            processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap,
+                                    getGroupRoles(client, c), r, map -> {
+                                        map.put(CHAT, c);
+                                        map.put(PARENT, message);
+                                    });
+                        }, c.id, (String) message.get(MESSAGE_ID));
+                    }
+                }, c.id);
+            });
+        }
+    }
+
+    protected void processTeamMessages(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Map<String, Object> configMap,
+            final Office365Client client) {
+        final String teamId = (String) configMap.get(TEAM_ID);
+        if (StringUtil.isNotBlank(teamId)) {
+            final Group g = client.getGroupById(teamId);
+            if (g == null) {
+                throw new DataStoreException("Could not find a team: " + teamId);
+            }
+            final String channelId = (String) configMap.get(CHANNEL_ID);
+            if (StringUtil.isNotBlank(channelId)) {
+                final Channel c = client.getChannelById(teamId, channelId);
+                if (c == null) {
+                    throw new DataStoreException("Could not find a channel: " + channelId);
+                }
+                client.getTeamMessages(Collections.emptyList(), m -> {
+                    final Map<String, Object> message = processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap,
+                            defaultDataMap, getGroupRoles(g), m, map -> {
+                                map.put(TEAM, g);
+                                map.put(CHANNEL, c);
+                            });
+                    if (!((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
+                        client.getTeamReplyMessages(Collections.emptyList(), r -> {
+                            processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, getGroupRoles(g), r,
+                                    map -> {
+                                        map.put(TEAM, g);
+                                        map.put(CHANNEL, c);
+                                        map.put(PARENT, message);
+                                    });
+                        }, teamId, channelId, (String) message.get(MESSAGE_ID));
+                    }
+                }, teamId, channelId);
+            } else {
+                client.getChannels(Collections.emptyList(), c -> {
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Channel: {} : {}", c.id, ToStringBuilder.reflectionToString(c));
+                    } else {
+                        logger.info("Channel: {} : {}", c.id, c.displayName);
+                    }
+                    client.getTeamMessages(Collections.emptyList(), m -> {
+                        final Map<String, Object> message = processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap,
+                                defaultDataMap, getGroupRoles(g), m, map -> {
+                                    map.put(TEAM, g);
+                                    map.put(CHANNEL, c);
+                                });
+                        if (!((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
+                            client.getTeamReplyMessages(Collections.emptyList(), r -> {
+                                processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, getGroupRoles(g),
+                                        r, map -> {
+                                            map.put(TEAM, g);
+                                            map.put(CHANNEL, c);
+                                            map.put(PARENT, message);
+                                        });
+                            }, teamId, c.id, (String) message.get(MESSAGE_ID));
+                        }
+                    }, teamId, c.id);
+                }, teamId);
+            }
+        } else if (teamId == null) {
+            client.geTeams(Collections.emptyList(), g -> {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Team: {} : {}", g.id, ToStringBuilder.reflectionToString(g));
+                } else {
+                    logger.info("Team: {} : {}", g.id, g.displayName);
+                }
+                client.getChannels(Collections.emptyList(), c -> {
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Channel: {} : {}", c.id, ToStringBuilder.reflectionToString(c));
+                    } else {
+                        logger.info("Channel: {} : {}", c.id, c.displayName);
+                    }
+                    client.getTeamMessages(Collections.emptyList(), m -> {
+                        final Map<String, Object> message = processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap,
+                                defaultDataMap, getGroupRoles(g), m, map -> {
+                                    map.put(TEAM, g);
+                                    map.put(CHANNEL, c);
+                                });
+                        if (!((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
+                            client.getTeamReplyMessages(Collections.emptyList(), r -> {
+                                processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, getGroupRoles(g),
+                                        r, map -> {
+                                            map.put(TEAM, g);
+                                            map.put(CHANNEL, c);
+                                            map.put(PARENT, message);
+                                        });
+                            }, g.id, c.id, (String) message.get(MESSAGE_ID));
+                        }
+                    }, g.id, c.id);
+                }, g.id);
+            });
         }
     }
 
@@ -211,15 +308,86 @@ public class TeamsDataStore extends Office365DataStore {
         return paramMap.get(CHANNEL_ID);
     }
 
+    protected String getChatId(final Map<String, String> paramMap) {
+        return paramMap.get(CHAT_ID);
+    }
+
     protected Office365Client createClient(final Map<String, String> params) {
         return new Office365Client(params);
     }
 
+    protected List<String> getGroupRoles(final Office365Client client, final Chat chat) {
+        final List<String> permissions = new ArrayList<>();
+        final SystemHelper systemHelper = ComponentUtil.getSystemHelper();
+        client.getChatMembers(Collections.emptyList(), m -> {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Member: {} : {}", m.id, ToStringBuilder.reflectionToString(m));
+            } else {
+                logger.info("Member: {} : {}", m.id, m.displayName);
+            }
+            if (m instanceof AadUserConversationMember) {
+                final AadUserConversationMember member = (AadUserConversationMember) m;
+                final String id = member.userId;
+                final String email = member.email;
+                if (StringUtil.isNotBlank(email)) {
+                    final List<String> idList = new ArrayList<>();
+                    if (StringUtil.isBlank(id)) {
+                        Collections.addAll(idList, client.getGroupIdsByEmail(email));
+                    } else {
+                        idList.add(id);
+                    }
+                    if (idList.isEmpty()) {
+                        permissions.add(systemHelper.getSearchRoleByUser(email));
+                        permissions.add(systemHelper.getSearchRoleByGroup(email));
+                    } else {
+                        idList.stream().forEach(i -> {
+                            final UserType userType = client.getUserType(i);
+                            switch (userType) {
+                            case USER:
+                                permissions.add(systemHelper.getSearchRoleByUser(email));
+                                permissions.add(systemHelper.getSearchRoleByUser(i));
+                                break;
+                            case GROUP:
+                                permissions.add(systemHelper.getSearchRoleByGroup(email));
+                                permissions.add(systemHelper.getSearchRoleByGroup(i));
+                                break;
+                            default:
+                                permissions.add(systemHelper.getSearchRoleByUser(email));
+                                permissions.add(systemHelper.getSearchRoleByGroup(email));
+                                permissions.add(systemHelper.getSearchRoleByUser(i));
+                                permissions.add(systemHelper.getSearchRoleByGroup(i));
+                                break;
+                            }
+                        });
+                    }
+                } else if (StringUtil.isNotBlank(id)) {
+                    final UserType userType = client.getUserType(id);
+                    switch (userType) {
+                    case USER:
+                        permissions.add(systemHelper.getSearchRoleByUser(id));
+                        break;
+                    case GROUP:
+                        permissions.add(systemHelper.getSearchRoleByGroup(id));
+                        break;
+                    default:
+                        permissions.add(systemHelper.getSearchRoleByUser(id));
+                        permissions.add(systemHelper.getSearchRoleByGroup(id));
+                        break;
+                    }
+                } else if (logger.isDebugEnabled()) {
+                    logger.debug("No identity for permission.");
+                }
+            }
+        }, chat.id);
+        return permissions;
+    }
+
     protected Map<String, Object> processChatMessage(final DataConfig dataConfig, final IndexUpdateCallback callback,
             final Map<String, Object> configMap, final Map<String, String> paramMap, final Map<String, String> scriptMap,
-            final Map<String, Object> defaultDataMap, final Group group, final ChatMessage message, final Map<String, Object> parent) {
+            final Map<String, Object> defaultDataMap, final List<String> permissions, final ChatMessage message,
+            final Consumer<Map<String, Object>> resultAppender) {
         if (logger.isDebugEnabled()) {
-            logger.debug(ToStringBuilder.reflectionToString(message));
+            logger.debug("Message: {} : {}", message.id, ToStringBuilder.reflectionToString(message));
         } else {
             logger.info("Message: {} : {}", message.id, message.webUrl);
         }
@@ -256,9 +424,8 @@ public class TeamsDataStore extends Office365DataStore {
             messageMap.put(MESSAGE_WEB_URL, message.webUrl);
 
             resultMap.put(MESSAGE, messageMap);
-            resultMap.put(PARENT, parent);
+            resultAppender.accept(resultMap);
 
-            final List<String> permissions = getGroupRoles(group);
             final PermissionHelper permissionHelper = ComponentUtil.getPermissionHelper();
             StreamUtil.split(paramMap.get(DEFAULT_PERMISSIONS), ",")
                     .of(stream -> stream.filter(StringUtil::isNotBlank).map(permissionHelper::encode).forEach(permissions::add));
@@ -362,22 +529,22 @@ public class TeamsDataStore extends Office365DataStore {
         return bodyBuf.toString();
     }
 
-    protected String stripHtmlTags(String value) {
+    protected String stripHtmlTags(final String value) {
         if (value == null) {
             return "";
         }
 
-        if (value.contains("<") == false || value.contains(">") == false) {
+        if (!value.contains("<") || !value.contains(">")) {
             return value;
         }
 
-        StringBuilder builder = new StringBuilder();
+        final StringBuilder builder = new StringBuilder();
         try (HTMLStripCharFilter filter = new HTMLStripCharFilter(new StringReader(value))) {
             int ch;
             while ((ch = filter.read()) != -1) {
                 builder.append((char) ch);
             }
-        } catch (IOException e) {
+        } catch (final IOException e) {
             throw new FesenException(e);
         }
 

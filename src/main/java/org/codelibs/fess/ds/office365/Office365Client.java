@@ -47,7 +47,9 @@ import com.microsoft.graph.http.GraphServiceException;
 import com.microsoft.graph.logger.DefaultLogger;
 import com.microsoft.graph.logger.LoggerLevel;
 import com.microsoft.graph.models.Channel;
+import com.microsoft.graph.models.Chat;
 import com.microsoft.graph.models.ChatMessage;
+import com.microsoft.graph.models.ConversationMember;
 import com.microsoft.graph.models.Drive;
 import com.microsoft.graph.models.Group;
 import com.microsoft.graph.models.OnenotePage;
@@ -57,7 +59,9 @@ import com.microsoft.graph.models.User;
 import com.microsoft.graph.options.Option;
 import com.microsoft.graph.options.QueryOption;
 import com.microsoft.graph.requests.ChannelCollectionPage;
+import com.microsoft.graph.requests.ChatCollectionPage;
 import com.microsoft.graph.requests.ChatMessageCollectionPage;
+import com.microsoft.graph.requests.ConversationMemberCollectionPage;
 import com.microsoft.graph.requests.DriveCollectionPage;
 import com.microsoft.graph.requests.DriveItemCollectionPage;
 import com.microsoft.graph.requests.DriveRequestBuilder;
@@ -366,7 +370,19 @@ public class Office365Client implements Closeable {
         }
     }
 
-    public void getChatMessages(final List<QueryOption> options, final Consumer<ChatMessage> consumer, final String teamId,
+    public Channel getChannelById(final String teamId, final String id) {
+        final List<Channel> channelList = new ArrayList<>();
+        getChannels(Collections.singletonList(new QueryOption("$filter", "id eq '" + id + "'")), g -> channelList.add(g), teamId);
+        if (logger.isDebugEnabled()) {
+            channelList.forEach(ToStringBuilder::reflectionToString);
+        }
+        if (channelList.size() == 1) {
+            return channelList.get(0);
+        }
+        return null;
+    }
+
+    public void getTeamMessages(final List<QueryOption> options, final Consumer<ChatMessage> consumer, final String teamId,
             final String channelId) {
         ChatMessageCollectionPage page = client.teams(teamId).channels(channelId).messages().buildRequest(options).get();
         page.getCurrentPage().forEach(consumer::accept);
@@ -376,9 +392,58 @@ public class Office365Client implements Closeable {
         }
     }
 
-    public void getReplyMessages(final List<QueryOption> options, final Consumer<ChatMessage> consumer, final String teamId,
+    public void getTeamReplyMessages(final List<QueryOption> options, final Consumer<ChatMessage> consumer, final String teamId,
             final String channelId, final String messageId) {
         ChatMessageCollectionPage page = client.teams(teamId).channels(channelId).messages(messageId).replies().buildRequest(options).get();
+        page.getCurrentPage().forEach(consumer::accept);
+        while (page.getNextPage() != null) {
+            page = page.getNextPage().buildRequest().get();
+            page.getCurrentPage().forEach(consumer::accept);
+        }
+    }
+
+    public void getChats(final List<QueryOption> options, final Consumer<Chat> consumer) {
+        ChatCollectionPage page = client.chats().buildRequest(options).get();
+        page.getCurrentPage().forEach(consumer::accept);
+        while (page.getNextPage() != null) {
+            page = page.getNextPage().buildRequest().get();
+            page.getCurrentPage().forEach(consumer::accept);
+        }
+    }
+
+    public void getChatMessages(final List<QueryOption> options, final Consumer<ChatMessage> consumer, final String chatId) {
+        ChatMessageCollectionPage page = client.chats(chatId).messages().buildRequest(options).get();
+        page.getCurrentPage().forEach(consumer::accept);
+        while (page.getNextPage() != null) {
+            page = page.getNextPage().buildRequest().get();
+            page.getCurrentPage().forEach(consumer::accept);
+        }
+    }
+
+    public void getChatReplyMessages(final List<QueryOption> options, final Consumer<ChatMessage> consumer, final String chatId,
+            final String messageId) {
+        ChatMessageCollectionPage page = client.chats(chatId).messages(messageId).replies().buildRequest(options).get();
+        page.getCurrentPage().forEach(consumer::accept);
+        while (page.getNextPage() != null) {
+            page = page.getNextPage().buildRequest().get();
+            page.getCurrentPage().forEach(consumer::accept);
+        }
+    }
+
+    public Chat getChatById(final String id) {
+        final List<Chat> chatList = new ArrayList<>();
+        getChats(Collections.singletonList(new QueryOption("$filter", "id eq '" + id + "'")), g -> chatList.add(g));
+        if (logger.isDebugEnabled()) {
+            chatList.forEach(ToStringBuilder::reflectionToString);
+        }
+        if (chatList.size() == 1) {
+            return chatList.get(0);
+        }
+        return null;
+    }
+
+    public void getChatMembers(final List<QueryOption> options, final Consumer<ConversationMember> consumer, final String chatId) {
+        ConversationMemberCollectionPage page = client.chats(chatId).members().buildRequest(options).get();
         page.getCurrentPage().forEach(consumer::accept);
         while (page.getNextPage() != null) {
             page = page.getNextPage().buildRequest().get();

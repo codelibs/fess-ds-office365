@@ -25,6 +25,8 @@ import org.dbflute.utflute.lastaflute.LastaFluteTestCase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.microsoft.graph.models.Channel;
+import com.microsoft.graph.models.Chat;
 import com.microsoft.graph.models.Drive;
 import com.microsoft.graph.models.Group;
 import com.microsoft.graph.models.User;
@@ -125,17 +127,44 @@ public class Office365ClientTest extends LastaFluteTestCase {
             assertEquals(g.id, g2.id);
             client.getChannels(Collections.emptyList(), c -> {
                 logger.info(ToStringBuilder.reflectionToString(c));
-                client.getChatMessages(Collections.emptyList(), m -> {
+                assertNotNull(c.id);
+                Channel c2 = client.getChannelById(g.id, c.id);
+                assertEquals(c.id, c2.id);
+                client.getTeamMessages(Collections.emptyList(), m -> {
                     logger.info(ToStringBuilder.reflectionToString(m));
                     logger.info(m.body.contentType.toString());
                     logger.info(m.body.content);
-                    client.getReplyMessages(Collections.emptyList(), r -> {
+                    client.getTeamReplyMessages(Collections.emptyList(), r -> {
                         logger.info(ToStringBuilder.reflectionToString(r));
                         logger.info(r.body.contentType.toString());
                         logger.info(r.body.content);
                     }, g.id, c.id, m.id);
                 }, g.id, c.id);
             }, g.id);
+        });
+    }
+
+    public void test_getChats() {
+        if (client == null) {
+            assertTrue("No client", true);
+            return;
+        }
+
+        client.getChats(Collections.emptyList(), c -> {
+            logger.info(ToStringBuilder.reflectionToString(c));
+            assertNotNull(c.id);
+            Chat c2 = client.getChatById(c.id);
+            assertEquals(c.id, c2.id);
+            client.getChatMessages(Collections.emptyList(), m -> {
+                logger.info(ToStringBuilder.reflectionToString(m));
+                logger.info(m.body.contentType.toString());
+                logger.info(m.body.content);
+                client.getChatReplyMessages(Collections.emptyList(), r -> {
+                    logger.info(ToStringBuilder.reflectionToString(r));
+                    logger.info(r.body.contentType.toString());
+                    logger.info(r.body.content);
+                }, c.id, m.id);
+            }, c.id);
         });
     }
 }
