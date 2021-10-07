@@ -51,7 +51,6 @@ import org.slf4j.LoggerFactory;
 
 import com.microsoft.graph.models.AadUserConversationMember;
 import com.microsoft.graph.models.Channel;
-import com.microsoft.graph.models.Chat;
 import com.microsoft.graph.models.ChatMessage;
 import com.microsoft.graph.models.ChatMessageFromIdentitySet;
 import com.microsoft.graph.models.Group;
@@ -101,7 +100,6 @@ public class TeamsDataStore extends Office365DataStore {
     private static final String PARENT = "parent";
     private static final String TEAM = "team";
     private static final String CHANNEL = "channel";
-    private static final String CHAT = "chat";
 
     @Override
     protected String getName() {
@@ -146,48 +144,16 @@ public class TeamsDataStore extends Office365DataStore {
             final Office365Client client) {
         final String chatId = (String) configMap.get(CHAT_ID);
         if (StringUtil.isNotBlank(chatId)) {
-            final Chat c = client.getChatById(chatId);
-            if (c == null) {
-                throw new DataStoreException("Could not find a chat: " + chatId);
-            }
             client.getChatMessages(Collections.emptyList(), m -> {
                 final Map<String, Object> message = processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap,
-                        getGroupRoles(client, c), m, map -> {
-                            map.put(CHAT, c);
-                        });
+                        getGroupRoles(client, chatId), m, map -> {});
                 if (!((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
                     client.getChatReplyMessages(Collections.emptyList(), r -> {
-                        processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, getGroupRoles(client, c),
-                                r, map -> {
-                                    map.put(CHAT, c);
-                                    map.put(PARENT, message);
-                                });
-                    }, c.id, (String) message.get(MESSAGE_ID));
+                        processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap,
+                                getGroupRoles(client, chatId), r, map -> map.put(PARENT, message));
+                    }, chatId, (String) message.get(MESSAGE_ID));
                 }
-            }, c.id);
-        } else if (chatId == null) {
-            client.getChats(Collections.emptyList(), c -> {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Chat: {} : {}", c.id, ToStringBuilder.reflectionToString(c));
-                } else {
-                    logger.info("Chat: {} : {}", c.id, c.topic);
-                }
-                client.getChatMessages(Collections.emptyList(), m -> {
-                    final Map<String, Object> message = processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap,
-                            defaultDataMap, getGroupRoles(client, c), m, map -> {
-                                map.put(CHAT, c);
-                            });
-                    if (!((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
-                        client.getChatReplyMessages(Collections.emptyList(), r -> {
-                            processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap,
-                                    getGroupRoles(client, c), r, map -> {
-                                        map.put(CHAT, c);
-                                        map.put(PARENT, message);
-                                    });
-                        }, c.id, (String) message.get(MESSAGE_ID));
-                    }
-                }, c.id);
-            });
+            }, chatId);
         }
     }
 
@@ -316,7 +282,7 @@ public class TeamsDataStore extends Office365DataStore {
         return new Office365Client(params);
     }
 
-    protected List<String> getGroupRoles(final Office365Client client, final Chat chat) {
+    protected List<String> getGroupRoles(final Office365Client client, final String chatId) {
         final List<String> permissions = new ArrayList<>();
         final SystemHelper systemHelper = ComponentUtil.getSystemHelper();
         client.getChatMembers(Collections.emptyList(), m -> {
@@ -378,7 +344,7 @@ public class TeamsDataStore extends Office365DataStore {
                     logger.debug("No identity for permission.");
                 }
             }
-        }, chat.id);
+        }, chatId);
         return permissions;
     }
 
