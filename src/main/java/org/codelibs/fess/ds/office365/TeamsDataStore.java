@@ -50,10 +50,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.microsoft.graph.models.AadUserConversationMember;
+import com.microsoft.graph.models.BodyType;
 import com.microsoft.graph.models.Channel;
 import com.microsoft.graph.models.ChatMessage;
 import com.microsoft.graph.models.ChatMessageFromIdentitySet;
 import com.microsoft.graph.models.Group;
+import com.microsoft.graph.models.ItemBody;
 
 public class TeamsDataStore extends Office365DataStore {
 
@@ -76,7 +78,7 @@ public class TeamsDataStore extends Office365DataStore {
 
     // scripts
     private static final String MESSAGE = "message";
-    private static final String MESSAGE_ATTACHMENTS = "attachments";
+    private static final String MESSAGE_ATTACHMENTS = "attachments"; // internal user only
     private static final String MESSAGE_BODY = "body";
     private static final String MESSAGE_CHANNEL_IDENTITY = "channel_identity";
     private static final String MESSAGE_CHAT_ID = "chat_id";
@@ -84,14 +86,14 @@ public class TeamsDataStore extends Office365DataStore {
     private static final String MESSAGE_DELETED_DATE_TIME = "deleted_date_time";
     private static final String MESSAGE_ETAG = "etag";
     private static final String MESSAGE_FROM = "from";
-    private static final String MESSAGE_HOSTED_CONTENTS = "hosted_contents";
+    private static final String MESSAGE_HOSTED_CONTENTS = "hosted_contents"; // internal user only
     private static final String MESSAGE_ID = "id";
     private static final String MESSAGE_IMPORTANCE = "importance";
     private static final String MESSAGE_LAST_EDITED_DATE_TIME = "last_edited_date_time";
     private static final String MESSAGE_LAST_MODIFIED_DATE_TIME = "last_modified_date_time";
     private static final String MESSAGE_LOCALE = "locale";
     private static final String MESSAGE_MENTIONS = "mentions";
-    // private static final String MESSAGE_REPLIES = "replies";
+    private static final String MESSAGE_REPLIES = "replies"; // internal user only
     private static final String MESSAGE_REPLY_TO_ID = "reply_to_id";
     private static final String MESSAGE_SUBJECT = "subject";
     private static final String MESSAGE_SUMMARY = "summary";
@@ -144,11 +146,50 @@ public class TeamsDataStore extends Office365DataStore {
             final Office365Client client) {
         final String chatId = (String) configMap.get(CHAT_ID);
         if (StringUtil.isNotBlank(chatId)) {
-            client.getChatMessages(Collections.emptyList(), m -> {
+            final List<ChatMessage> msgList = new ArrayList<>();
+            client.getChatMessages(Collections.emptyList(), m -> msgList.add(m), chatId);
+            if (!msgList.isEmpty()) {
+                final ChatMessage m = createChatMessage(msgList);
                 processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, getGroupRoles(client, chatId), m,
-                        map -> {});
-            }, chatId);
+                        map -> map.put("messages", msgList));
+            }
         }
+    }
+
+    protected ChatMessage createChatMessage(List<ChatMessage> msgList) {
+        final ChatMessage msg = new ChatMessage();
+        final ChatMessage defaultMsg = msgList.get(0);
+        msg.attachments = new ArrayList<>();
+        msgList.stream().forEach(m -> msg.attachments.addAll(m.attachments));
+        msg.body = new ItemBody();
+        msg.body.contentType = BodyType.TEXT;
+        final StringBuilder bodyBuf = new StringBuilder(1000);
+        final Map<String, Object> configMap = new HashMap<>();
+        configMap.put(APPEND_ATTACHMENT, false);
+        msgList.stream().forEach(m -> bodyBuf.append(getConent(configMap, m)));
+        msg.body.content = bodyBuf.toString();
+        msg.channelIdentity = defaultMsg.channelIdentity;
+        msg.createdDateTime = defaultMsg.createdDateTime;
+        msg.deletedDateTime = defaultMsg.deletedDateTime;
+        msg.etag = defaultMsg.etag;
+        msg.from = defaultMsg.from;
+        msg.importance = defaultMsg.importance;
+        msg.lastEditedDateTime = defaultMsg.lastEditedDateTime;
+        msg.lastModifiedDateTime = defaultMsg.lastModifiedDateTime;
+        msg.locale = defaultMsg.locale;
+        msg.mentions = new ArrayList<>();
+        msgList.stream().forEach(m -> msg.mentions.addAll(m.mentions));
+        msg.messageType = defaultMsg.messageType;
+        msg.policyViolation = defaultMsg.policyViolation;
+        msg.reactions = new ArrayList<>();
+        msgList.stream().forEach(m -> msg.reactions.addAll(m.reactions));
+        msg.replyToId = defaultMsg.replyToId;
+        msg.subject = defaultMsg.subject;
+        msg.summary = defaultMsg.summary;
+        msg.webUrl = "https://teams.microsoft.com/_#/conversations/" + defaultMsg.chatId + "?ctx=chat";
+        msg.hostedContents = defaultMsg.hostedContents;
+        msg.replies = defaultMsg.replies;
+        return msg;
     }
 
     protected void processTeamMessages(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
@@ -377,7 +418,7 @@ public class TeamsDataStore extends Office365DataStore {
             messageMap.put(MESSAGE_LAST_MODIFIED_DATE_TIME, message.lastModifiedDateTime);
             messageMap.put(MESSAGE_LOCALE, message.locale);
             messageMap.put(MESSAGE_MENTIONS, message.mentions);
-            // messageMap.put(MESSAGE_REPLIES, message.replies);
+            messageMap.put(MESSAGE_REPLIES, message.replies);
             messageMap.put(MESSAGE_REPLY_TO_ID, message.replyToId);
             messageMap.put(MESSAGE_SUBJECT, message.subject);
             messageMap.put(MESSAGE_SUMMARY, message.summary);
@@ -476,7 +517,7 @@ public class TeamsDataStore extends Office365DataStore {
                 break;
             }
         }
-        if (((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue() && message.attachments != null) {
+        if (((Boolean) configMap.get(APPEND_ATTACHMENT)).booleanValue() && message.attachments != null) {
             message.attachments.forEach(a -> {
                 if (StringUtil.isNotBlank(a.name)) {
                     bodyBuf.append('\n').append(a.name);
