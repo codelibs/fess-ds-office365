@@ -145,14 +145,8 @@ public class TeamsDataStore extends Office365DataStore {
         final String chatId = (String) configMap.get(CHAT_ID);
         if (StringUtil.isNotBlank(chatId)) {
             client.getChatMessages(Collections.emptyList(), m -> {
-                final Map<String, Object> message = processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap,
-                        getGroupRoles(client, chatId), m, map -> {});
-                if (!((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
-                    client.getChatReplyMessages(Collections.emptyList(), r -> {
-                        processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap,
-                                getGroupRoles(client, chatId), r, map -> map.put(PARENT, message));
-                    }, chatId, (String) message.get(MESSAGE_ID));
-                }
+                processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, getGroupRoles(client, chatId), m,
+                        map -> {});
             }, chatId);
         }
     }
