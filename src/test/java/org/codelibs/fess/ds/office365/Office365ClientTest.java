@@ -26,7 +26,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.microsoft.graph.models.Channel;
-import com.microsoft.graph.models.Chat;
 import com.microsoft.graph.models.Drive;
 import com.microsoft.graph.models.Group;
 import com.microsoft.graph.models.User;
@@ -150,21 +149,11 @@ public class Office365ClientTest extends LastaFluteTestCase {
             return;
         }
 
-        client.getChats(Collections.emptyList(), c -> {
-            logger.info(ToStringBuilder.reflectionToString(c));
-            assertNotNull(c.id);
-            Chat c2 = client.getChatById(c.id);
-            assertEquals(c.id, c2.id);
-            client.getChatMessages(Collections.emptyList(), m -> {
-                logger.info(ToStringBuilder.reflectionToString(m));
-                logger.info(m.body.contentType.toString());
-                logger.info(m.body.content);
-                client.getChatReplyMessages(Collections.emptyList(), r -> {
-                    logger.info(ToStringBuilder.reflectionToString(r));
-                    logger.info(r.body.contentType.toString());
-                    logger.info(r.body.content);
-                }, c.id, m.id);
-            }, c.id);
-        });
+        final String chatId = "chat id";
+        client.getChatMessages(Collections.emptyList(), m -> {
+            logger.info(ToStringBuilder.reflectionToString(m));
+            logger.info(m.body.contentType.toString());
+            logger.info(m.body.content);
+        }, chatId);
     }
 }
