@@ -402,6 +402,16 @@ public class Office365Client implements Closeable {
         }
     }
 
+    public void getChannelMembers(final List<QueryOption> options, final Consumer<ConversationMember> consumer, final String teamId,
+            final String channelId) {
+        ConversationMemberCollectionPage page = client.teams(teamId).channels(channelId).members().buildRequest(options).get();
+        page.getCurrentPage().forEach(consumer::accept);
+        while (page.getNextPage() != null) {
+            page = page.getNextPage().buildRequest().get();
+            page.getCurrentPage().forEach(consumer::accept);
+        }
+    }
+
     public void getChats(final List<QueryOption> options, final Consumer<Chat> consumer) {
         ChatCollectionPage page = client.chats().buildRequest(options).get();
         page.getCurrentPage().forEach(consumer::accept);

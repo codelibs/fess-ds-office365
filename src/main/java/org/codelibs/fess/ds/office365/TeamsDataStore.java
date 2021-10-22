@@ -54,6 +54,7 @@ import com.microsoft.graph.models.BodyType;
 import com.microsoft.graph.models.Channel;
 import com.microsoft.graph.models.ChatMessage;
 import com.microsoft.graph.models.ChatMessageFromIdentitySet;
+import com.microsoft.graph.models.ConversationMember;
 import com.microsoft.graph.models.Group;
 import com.microsoft.graph.models.ItemBody;
 
@@ -209,14 +210,14 @@ public class TeamsDataStore extends Office365DataStore {
                 }
                 client.getTeamMessages(Collections.emptyList(), m -> {
                     final Map<String, Object> message = processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap,
-                            defaultDataMap, getGroupRoles(g), m, map -> {
+                            defaultDataMap, getGroupRoles(client, g.id, c.id), m, map -> {
                                 map.put(TEAM, g);
                                 map.put(CHANNEL, c);
                             });
                     if (!((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
                         client.getTeamReplyMessages(Collections.emptyList(), r -> {
-                            processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, getGroupRoles(g), r,
-                                    map -> {
+                            processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap,
+                                    getGroupRoles(client, g.id, c.id), r, map -> {
                                         map.put(TEAM, g);
                                         map.put(CHANNEL, c);
                                         map.put(PARENT, message);
@@ -233,14 +234,14 @@ public class TeamsDataStore extends Office365DataStore {
                     }
                     client.getTeamMessages(Collections.emptyList(), m -> {
                         final Map<String, Object> message = processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap,
-                                defaultDataMap, getGroupRoles(g), m, map -> {
+                                defaultDataMap, getGroupRoles(client, g.id, c.id), m, map -> {
                                     map.put(TEAM, g);
                                     map.put(CHANNEL, c);
                                 });
                         if (!((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
                             client.getTeamReplyMessages(Collections.emptyList(), r -> {
-                                processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, getGroupRoles(g),
-                                        r, map -> {
+                                processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap,
+                                        getGroupRoles(client, g.id, c.id), r, map -> {
                                             map.put(TEAM, g);
                                             map.put(CHANNEL, c);
                                             map.put(PARENT, message);
@@ -265,14 +266,14 @@ public class TeamsDataStore extends Office365DataStore {
                     }
                     client.getTeamMessages(Collections.emptyList(), m -> {
                         final Map<String, Object> message = processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap,
-                                defaultDataMap, getGroupRoles(g), m, map -> {
+                                defaultDataMap, getGroupRoles(client, g.id, c.id), m, map -> {
                                     map.put(TEAM, g);
                                     map.put(CHANNEL, c);
                                 });
                         if (!((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
                             client.getTeamReplyMessages(Collections.emptyList(), r -> {
-                                processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, getGroupRoles(g),
-                                        r, map -> {
+                                processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap,
+                                        getGroupRoles(client, g.id, c.id), r, map -> {
                                             map.put(TEAM, g);
                                             map.put(CHANNEL, c);
                                             map.put(PARENT, message);
@@ -317,70 +318,78 @@ public class TeamsDataStore extends Office365DataStore {
         return new Office365Client(params);
     }
 
+    protected List<String> getGroupRoles(final Office365Client client, final String teamId, final String channelId) {
+        final List<String> permissions = new ArrayList<>();
+        client.getChannelMembers(Collections.emptyList(), m -> getGroupRoles(client, permissions, m), teamId, channelId);
+        return permissions;
+    }
+
     protected List<String> getGroupRoles(final Office365Client client, final String chatId) {
         final List<String> permissions = new ArrayList<>();
-        final SystemHelper systemHelper = ComponentUtil.getSystemHelper();
-        client.getChatMembers(Collections.emptyList(), m -> {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Member: {} : {}", m.id, ToStringBuilder.reflectionToString(m));
-            } else {
-                logger.info("Member: {} : {}", m.id, m.displayName);
-            }
-            if (m instanceof AadUserConversationMember) {
-                final AadUserConversationMember member = (AadUserConversationMember) m;
-                final String id = member.userId;
-                final String email = member.email;
-                if (StringUtil.isNotBlank(email)) {
-                    final List<String> idList = new ArrayList<>();
-                    if (StringUtil.isBlank(id)) {
-                        Collections.addAll(idList, client.getGroupIdsByEmail(email));
-                    } else {
-                        idList.add(id);
-                    }
-                    if (idList.isEmpty()) {
-                        permissions.add(systemHelper.getSearchRoleByUser(email));
-                        permissions.add(systemHelper.getSearchRoleByGroup(email));
-                    } else {
-                        idList.stream().forEach(i -> {
-                            final UserType userType = client.getUserType(i);
-                            switch (userType) {
-                            case USER:
-                                permissions.add(systemHelper.getSearchRoleByUser(email));
-                                permissions.add(systemHelper.getSearchRoleByUser(i));
-                                break;
-                            case GROUP:
-                                permissions.add(systemHelper.getSearchRoleByGroup(email));
-                                permissions.add(systemHelper.getSearchRoleByGroup(i));
-                                break;
-                            default:
-                                permissions.add(systemHelper.getSearchRoleByUser(email));
-                                permissions.add(systemHelper.getSearchRoleByGroup(email));
-                                permissions.add(systemHelper.getSearchRoleByUser(i));
-                                permissions.add(systemHelper.getSearchRoleByGroup(i));
-                                break;
-                            }
-                        });
-                    }
-                } else if (StringUtil.isNotBlank(id)) {
-                    final UserType userType = client.getUserType(id);
-                    switch (userType) {
-                    case USER:
-                        permissions.add(systemHelper.getSearchRoleByUser(id));
-                        break;
-                    case GROUP:
-                        permissions.add(systemHelper.getSearchRoleByGroup(id));
-                        break;
-                    default:
-                        permissions.add(systemHelper.getSearchRoleByUser(id));
-                        permissions.add(systemHelper.getSearchRoleByGroup(id));
-                        break;
-                    }
-                } else if (logger.isDebugEnabled()) {
-                    logger.debug("No identity for permission.");
-                }
-            }
-        }, chatId);
+        client.getChatMembers(Collections.emptyList(), m -> getGroupRoles(client, permissions, m), chatId);
         return permissions;
+    }
+
+    protected void getGroupRoles(final Office365Client client, final List<String> permissions, ConversationMember m) {
+        final SystemHelper systemHelper = ComponentUtil.getSystemHelper();
+        if (logger.isDebugEnabled()) {
+            logger.debug("Member: {} : {}", m.id, ToStringBuilder.reflectionToString(m));
+        } else {
+            logger.info("Member: {} : {}", m.id, m.displayName);
+        }
+        if (m instanceof AadUserConversationMember) {
+            final AadUserConversationMember member = (AadUserConversationMember) m;
+            final String id = member.userId;
+            final String email = member.email;
+            if (StringUtil.isNotBlank(email)) {
+                final List<String> idList = new ArrayList<>();
+                if (StringUtil.isBlank(id)) {
+                    Collections.addAll(idList, client.getGroupIdsByEmail(email));
+                } else {
+                    idList.add(id);
+                }
+                if (idList.isEmpty()) {
+                    permissions.add(systemHelper.getSearchRoleByUser(email));
+                    permissions.add(systemHelper.getSearchRoleByGroup(email));
+                } else {
+                    idList.stream().forEach(i -> {
+                        final UserType userType = client.getUserType(i);
+                        switch (userType) {
+                        case USER:
+                            permissions.add(systemHelper.getSearchRoleByUser(email));
+                            permissions.add(systemHelper.getSearchRoleByUser(i));
+                            break;
+                        case GROUP:
+                            permissions.add(systemHelper.getSearchRoleByGroup(email));
+                            permissions.add(systemHelper.getSearchRoleByGroup(i));
+                            break;
+                        default:
+                            permissions.add(systemHelper.getSearchRoleByUser(email));
+                            permissions.add(systemHelper.getSearchRoleByGroup(email));
+                            permissions.add(systemHelper.getSearchRoleByUser(i));
+                            permissions.add(systemHelper.getSearchRoleByGroup(i));
+                            break;
+                        }
+                    });
+                }
+            } else if (StringUtil.isNotBlank(id)) {
+                final UserType userType = client.getUserType(id);
+                switch (userType) {
+                case USER:
+                    permissions.add(systemHelper.getSearchRoleByUser(id));
+                    break;
+                case GROUP:
+                    permissions.add(systemHelper.getSearchRoleByGroup(id));
+                    break;
+                default:
+                    permissions.add(systemHelper.getSearchRoleByUser(id));
+                    permissions.add(systemHelper.getSearchRoleByGroup(id));
+                    break;
+                }
+            } else if (logger.isDebugEnabled()) {
+                logger.debug("No identity for permission.");
+            }
+        }
     }
 
     protected Map<String, Object> processChatMessage(final DataConfig dataConfig, final IndexUpdateCallback callback,
