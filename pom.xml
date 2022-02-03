@@ -58,6 +58,7 @@
 									<include>io.projectreactor:reactor-core</include>
 									<include>io.netty:netty-codec-dns</include>
 									<include>io.netty:netty-codec-http2</include>
+									<include>io.netty:netty-handler-proxy</include>
 									<include>io.netty:netty-resolver-dns</include>
 									<include>io.netty:netty-transport-native-unix-common</include>
 									<include>org.reactivestreams:reactive-streams</include>
