@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2021 CodeLibs Project and the Others.
+ * Copyright 2012-2022 CodeLibs Project and the Others.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,7 +34,6 @@ import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.lucene.analysis.charfilter.HTMLStripCharFilter;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.stream.StreamUtil;
-import org.codelibs.fesen.FesenException;
 import org.codelibs.fess.Constants;
 import org.codelibs.fess.app.service.FailureUrlService;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
@@ -43,6 +42,7 @@ import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.ds.office365.Office365Client.UserType;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.exception.DataStoreException;
+import org.codelibs.fess.exception.FessSystemException;
 import org.codelibs.fess.helper.PermissionHelper;
 import org.codelibs.fess.helper.SystemHelper;
 import org.codelibs.fess.util.ComponentUtil;
@@ -157,7 +157,7 @@ public class TeamsDataStore extends Office365DataStore {
         }
     }
 
-    protected ChatMessage createChatMessage(List<ChatMessage> msgList) {
+    protected ChatMessage createChatMessage(final List<ChatMessage> msgList) {
         final ChatMessage msg = new ChatMessage();
         final ChatMessage defaultMsg = msgList.get(0);
         msg.attachments = new ArrayList<>();
@@ -330,7 +330,7 @@ public class TeamsDataStore extends Office365DataStore {
         return permissions;
     }
 
-    protected void getGroupRoles(final Office365Client client, final List<String> permissions, ConversationMember m) {
+    protected void getGroupRoles(final Office365Client client, final List<String> permissions, final ConversationMember m) {
         final SystemHelper systemHelper = ComponentUtil.getSystemHelper();
         if (logger.isDebugEnabled()) {
             logger.debug("Member: {} : {}", m.id, ToStringBuilder.reflectionToString(m));
@@ -555,7 +555,7 @@ public class TeamsDataStore extends Office365DataStore {
                 builder.append((char) ch);
             }
         } catch (final IOException e) {
-            throw new FesenException(e);
+            throw new FessSystemException(e);
         }
 
         return builder.toString();
