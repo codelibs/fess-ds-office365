@@ -143,7 +143,7 @@ public class OneNoteDataStore extends Office365DataStore {
                 getNotebooks(client, c -> c.users(user.id).onenote(), notebook -> executorService.execute(() -> processNotebook(dataConfig,
                         callback, paramMap, scriptMap, defaultDataMap, client, c -> c.users(user.id).onenote(), notebook, roles)));
             } catch (final GraphServiceException e) {
-                logger.warn("Failed to store " + user.displayName + "'s Notebooks.", e);
+                logger.warn("Failed to store {}'s Notebooks.", user.displayName, e);
             }
         });
     }
@@ -166,7 +166,7 @@ public class OneNoteDataStore extends Office365DataStore {
         final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap.asMap());
         final Map<String, Object> notebooksMap = new HashMap<>();
         final StatsKeyObject statsKey = new StatsKeyObject(notebook.id);
-
+        paramMap.put(Constants.CRAWLER_STATS_KEY, statsKey);
         try {
             crawlerStatsHelper.begin(statsKey);
             final String url = notebook.links.oneNoteWebUrl.href;

@@ -277,7 +277,7 @@ public class OneDriveDataStore extends Office365DataStore {
                         item -> executorService.execute(() -> processDriveItem(dataConfig, callback, configMap, paramMap, scriptMap,
                                 defaultDataMap, client, c -> c.users(user.id).drive(), item, getUserRoles(user))));
             } catch (final GraphServiceException e) {
-                logger.warn("Failed to store " + user.displayName + "'s Drive, ", e);
+                logger.warn("Failed to store {}'s Drive, ", user.displayName, e);
             }
         });
     }
@@ -307,6 +307,7 @@ public class OneDriveDataStore extends Office365DataStore {
         final Hashes hashes;
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
         final StatsKeyObject statsKey = new StatsKeyObject(item.webUrl);
+        paramMap.put(Constants.CRAWLER_STATS_KEY, statsKey);
         try {
             crawlerStatsHelper.begin(statsKey);
             if (item.file != null) {
@@ -593,7 +594,7 @@ public class OneDriveDataStore extends Office365DataStore {
                 return extractor.getText(in, null).getContent();
             } catch (final Exception e) {
                 if (ignoreError) {
-                    logger.warn("Failed to get contents: " + item.name, e);
+                    logger.warn("Failed to get contents: {}", item.name, e);
                     return StringUtil.EMPTY;
                 }
                 throw new DataStoreCrawlingException(item.webUrl, "Failed to get contents: " + item.name, e);

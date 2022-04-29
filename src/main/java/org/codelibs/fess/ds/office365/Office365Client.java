@@ -133,12 +133,12 @@ public class Office365Client implements Closeable {
                         public void logError(final String message, final Throwable t) {
                             if (t instanceof GraphServiceException) {
                                 if (((GraphServiceException) t).getResponseCode() == 404) {
-                                    logger.debug("[Office365Client] " + message, t);
+                                    logger.debug("[Office365Client] {}", message, t);
                                 } else {
-                                    logger.warn("[Office365Client] " + message, t);
+                                    logger.warn("[Office365Client] {}", message, t);
                                 }
                             } else {
-                                logger.error("[Office365Client] " + message, t);
+                                logger.error("[Office365Client] {}", message, t);
                             }
                         }
                     })//
@@ -299,7 +299,7 @@ public class Office365Client implements Closeable {
             final TikaExtractor extractor = ComponentUtil.getComponent("tikaExtractor");
             sb.append(extractor.getText(in, null).getContent());
         } catch (final IOException e) {
-            logger.warn("Failed to get contents of Page: " + page.title, e);
+            logger.warn("Failed to get contents of Page: {}", page.title, e);
         }
         return sb.toString();
     }

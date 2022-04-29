@@ -410,7 +410,7 @@ public class TeamsDataStore extends Office365DataStore {
         final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap.asMap());
         final Map<String, Object> messageMap = new HashMap<>();
         final StatsKeyObject statsKey = new StatsKeyObject(message.webUrl);
-
+        paramMap.put(Constants.CRAWLER_STATS_KEY, statsKey);
         try {
             crawlerStatsHelper.begin(statsKey);
 
