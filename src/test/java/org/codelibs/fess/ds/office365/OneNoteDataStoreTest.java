@@ -20,6 +20,7 @@ import java.util.Map;
 
 import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
+import org.codelibs.fess.entity.DataStoreParams;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.mylasta.direction.FessConfig;
 import org.codelibs.fess.util.ComponentUtil;
@@ -70,7 +71,7 @@ public class OneNoteDataStoreTest extends LastaFluteTestCase {
         ComponentUtil.register(tikaExtractor, "tikaExtractor");
 
         final DataConfig dataConfig = new DataConfig();
-        final Map<String, String> paramMap = new HashMap<>();
+        final DataStoreParams paramMap = new DataStoreParams();
         paramMap.put("tenant", tenant);
         paramMap.put("client_id", clientId);
         paramMap.put("client_secret", clientSecret);
@@ -87,7 +88,7 @@ public class OneNoteDataStoreTest extends LastaFluteTestCase {
 
         dataStore.storeData(dataConfig, new TestCallback() {
             @Override
-            public void test(Map<String, String> paramMap, Map<String, Object> dataMap) {
+            public void test(DataStoreParams paramMap, Map<String, Object> dataMap) {
                 logger.debug(dataMap.toString());
             }
         }, paramMap, scriptMap, defaultDataMap);
@@ -97,10 +98,10 @@ public class OneNoteDataStoreTest extends LastaFluteTestCase {
         private long documentSize = 0;
         private long executeTime = 0;
 
-        abstract void test(Map<String, String> paramMap, Map<String, Object> dataMap);
+        abstract void test(DataStoreParams paramMap, Map<String, Object> dataMap);
 
         @Override
-        public void store(Map<String, String> paramMap, Map<String, Object> dataMap) {
+        public void store(DataStoreParams paramMap, Map<String, Object> dataMap) {
             final long startTime = System.currentTimeMillis();
             test(paramMap, dataMap);
             executeTime += System.currentTimeMillis() - startTime;

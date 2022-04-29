@@ -30,8 +30,12 @@ import org.codelibs.fess.app.service.FailureUrlService;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.exception.MultipleCrawlingAccessException;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
+import org.codelibs.fess.entity.DataStoreParams;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.exception.DataStoreException;
+import org.codelibs.fess.helper.CrawlerStatsHelper;
+import org.codelibs.fess.helper.CrawlerStatsHelper.StatsAction;
+import org.codelibs.fess.helper.CrawlerStatsHelper.StatsKeyObject;
 import org.codelibs.fess.util.ComponentUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -70,10 +74,10 @@ public class OneNoteDataStore extends Office365DataStore {
     }
 
     @Override
-    protected void storeData(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+    protected void storeData(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap) {
 
-        final ExecutorService executorService = newFixedThreadPool(Integer.parseInt(paramMap.getOrDefault(NUMBER_OF_THREADS, "1")));
+        final ExecutorService executorService = newFixedThreadPool(Integer.parseInt(paramMap.getAsString(NUMBER_OF_THREADS, "1")));
         try (final Office365Client client = createClient(paramMap)) {
             if (isSiteNoteCrawler(paramMap)) {
                 if (logger.isDebugEnabled()) {
@@ -105,23 +109,23 @@ public class OneNoteDataStore extends Office365DataStore {
         }
     }
 
-    protected Office365Client createClient(final Map<String, String> params) {
+    protected Office365Client createClient(final DataStoreParams params) {
         return new Office365Client(params);
     }
 
-    protected boolean isGroupNoteCrawler(final Map<String, String> paramMap) {
-        return Constants.TRUE.equalsIgnoreCase(paramMap.getOrDefault(GROUP_NOTE_CRAWLER, Constants.TRUE));
+    protected boolean isGroupNoteCrawler(final DataStoreParams paramMap) {
+        return Constants.TRUE.equalsIgnoreCase(paramMap.getAsString(GROUP_NOTE_CRAWLER, Constants.TRUE));
     }
 
-    protected boolean isUserNoteCrawler(final Map<String, String> paramMap) {
-        return Constants.TRUE.equalsIgnoreCase(paramMap.getOrDefault(USER_NOTE_CRAWLER, Constants.TRUE));
+    protected boolean isUserNoteCrawler(final DataStoreParams paramMap) {
+        return Constants.TRUE.equalsIgnoreCase(paramMap.getAsString(USER_NOTE_CRAWLER, Constants.TRUE));
     }
 
-    protected boolean isSiteNoteCrawler(final Map<String, String> paramMap) {
-        return Constants.TRUE.equalsIgnoreCase(paramMap.getOrDefault(SITE_NOTE_CRAWLER, Constants.TRUE));
+    protected boolean isSiteNoteCrawler(final DataStoreParams paramMap) {
+        return Constants.TRUE.equalsIgnoreCase(paramMap.getAsString(SITE_NOTE_CRAWLER, Constants.TRUE));
     }
 
-    protected void storeSiteNotes(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+    protected void storeSiteNotes(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final ExecutorService executorService,
             final Office365Client client) {
         final Site root = client.getSite("root");
@@ -130,7 +134,7 @@ public class OneNoteDataStore extends Office365DataStore {
                 callback, paramMap, scriptMap, defaultDataMap, client, c -> c.sites(root.id).onenote(), notebook, roles)));
     }
 
-    protected void storeUsersNotes(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+    protected void storeUsersNotes(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final ExecutorService executorService,
             final Office365Client client) {
         getLicensedUsers(client, user -> {
@@ -144,7 +148,7 @@ public class OneNoteDataStore extends Office365DataStore {
         });
     }
 
-    protected void storeGroupsNotes(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+    protected void storeGroupsNotes(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final ExecutorService executorService,
             final Office365Client client) {
         getOffice365Groups(client, group -> {
@@ -154,14 +158,17 @@ public class OneNoteDataStore extends Office365DataStore {
         });
     }
 
-    protected void processNotebook(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+    protected void processNotebook(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Office365Client client,
             final Function<GraphServiceClient<Request>, OnenoteRequestBuilder> builder, final Notebook notebook, final List<String> roles) {
+        final CrawlerStatsHelper crawlerStatsHelper = ComponentUtil.getCrawlerStatsHelper();
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
-        final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
+        final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap.asMap());
         final Map<String, Object> notebooksMap = new HashMap<>();
+        final StatsKeyObject statsKey = new StatsKeyObject(notebook.id);
 
         try {
+            crawlerStatsHelper.begin(statsKey);
             final String url = notebook.links.oneNoteWebUrl.href;
             logger.info("Crawling URL: {}", url);
 
@@ -175,8 +182,10 @@ public class OneNoteDataStore extends Office365DataStore {
             notebooksMap.put(NOTEBOOK_WEB_URL, url);
             notebooksMap.put(NOTEBOOK_ROLES, roles);
 
-            resultMap.put("notebooks", notebooksMap); // TODO deprecated
             resultMap.put(NOTEBOOK, notebooksMap);
+
+            crawlerStatsHelper.record(statsKey, StatsAction.PREPARED);
+
             if (logger.isDebugEnabled()) {
                 logger.debug("notebooksMap: {}", notebooksMap);
             }
@@ -188,16 +197,25 @@ public class OneNoteDataStore extends Office365DataStore {
                     dataMap.put(entry.getKey(), convertValue);
                 }
             }
+
+            crawlerStatsHelper.record(statsKey, StatsAction.EVALUATED);
+
             if (logger.isDebugEnabled()) {
                 logger.debug("dataMap: {}", dataMap);
             }
+
+            if (dataMap.get("url") instanceof final String statsUrl) {
+                statsKey.setUrl(statsUrl);
+            }
+
             callback.store(paramMap, dataMap);
+            crawlerStatsHelper.record(statsKey, StatsAction.FINISHED);
         } catch (final CrawlingAccessException e) {
-            logger.warn("Crawling Access Exception at : " + dataMap, e);
+            logger.warn("Crawling Access Exception at : {}", dataMap, e);
 
             Throwable target = e;
-            if (target instanceof MultipleCrawlingAccessException) {
-                final Throwable[] causes = ((MultipleCrawlingAccessException) target).getCauses();
+            if (target instanceof final MultipleCrawlingAccessException ex) {
+                final Throwable[] causes = ex.getCauses();
                 if (causes.length > 0) {
                     target = causes[causes.length - 1];
                 }
@@ -213,10 +231,14 @@ public class OneNoteDataStore extends Office365DataStore {
 
             final FailureUrlService failureUrlService = ComponentUtil.getComponent(FailureUrlService.class);
             failureUrlService.store(dataConfig, errorName, notebook.displayName, target);
+            crawlerStatsHelper.record(statsKey, StatsAction.ACCESS_EXCEPTION);
         } catch (final Throwable t) {
-            logger.warn("Crawling Access Exception at : " + dataMap, t);
+            logger.warn("Crawling Access Exception at : {}", dataMap, t);
             final FailureUrlService failureUrlService = ComponentUtil.getComponent(FailureUrlService.class);
             failureUrlService.store(dataConfig, t.getClass().getCanonicalName(), notebook.displayName, t);
+            crawlerStatsHelper.record(statsKey, StatsAction.EXCEPTION);
+        } finally {
+            crawlerStatsHelper.done(statsKey);
         }
     }
 

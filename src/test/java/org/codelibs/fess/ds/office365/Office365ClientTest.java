@@ -16,10 +16,9 @@
 package org.codelibs.fess.ds.office365;
 
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
 
 import org.apache.commons.lang3.builder.ToStringBuilder;
+import org.codelibs.fess.entity.DataStoreParams;
 import org.codelibs.fess.util.ComponentUtil;
 import org.dbflute.utflute.lastaflute.LastaFluteTestCase;
 import org.slf4j.Logger;
@@ -53,7 +52,7 @@ public class Office365ClientTest extends LastaFluteTestCase {
         String clientId = System.getenv(Office365Client.CLIENT_ID_PARAM);
         String clientSecret = System.getenv(Office365Client.CLIENT_SECRET_PARAM);
         if (tenant != null && clientId != null && clientSecret != null) {
-            Map<String, String> params = new HashMap<>();
+            DataStoreParams params = new DataStoreParams();
             params.put(Office365Client.TENANT_PARAM, tenant);
             params.put(Office365Client.CLIENT_ID_PARAM, clientId);
             params.put(Office365Client.CLIENT_SECRET_PARAM, clientSecret);

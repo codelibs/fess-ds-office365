@@ -42,9 +42,13 @@ import org.codelibs.fess.crawler.extractor.Extractor;
 import org.codelibs.fess.crawler.filter.UrlFilter;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.ds.office365.Office365Client.UserType;
+import org.codelibs.fess.entity.DataStoreParams;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.exception.DataStoreCrawlingException;
 import org.codelibs.fess.exception.DataStoreException;
+import org.codelibs.fess.helper.CrawlerStatsHelper;
+import org.codelibs.fess.helper.CrawlerStatsHelper.StatsAction;
+import org.codelibs.fess.helper.CrawlerStatsHelper.StatsKeyObject;
 import org.codelibs.fess.helper.PermissionHelper;
 import org.codelibs.fess.helper.SystemHelper;
 import org.codelibs.fess.util.ComponentUtil;
@@ -137,7 +141,7 @@ public class OneDriveDataStore extends Office365DataStore {
     }
 
     @Override
-    protected void storeData(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+    protected void storeData(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap) {
 
         final Map<String, Object> configMap = new HashMap<>();
@@ -150,7 +154,7 @@ public class OneDriveDataStore extends Office365DataStore {
             logger.debug("configMap: {}", configMap);
         }
 
-        final ExecutorService executorService = newFixedThreadPool(Integer.parseInt(paramMap.getOrDefault(NUMBER_OF_THREADS, "1")));
+        final ExecutorService executorService = newFixedThreadPool(Integer.parseInt(paramMap.getAsString(NUMBER_OF_THREADS, "1")));
         try (final Office365Client client = createClient(paramMap)) {
             if (isSharedDocumentsDriveCrawler(paramMap)) {
                 if (logger.isDebugEnabled()) {
@@ -177,7 +181,7 @@ public class OneDriveDataStore extends Office365DataStore {
                 storeGroupsDrive(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, executorService, client);
             }
 
-            final String driveId = paramMap.get(DRIVE_ID);
+            final String driveId = paramMap.getAsString(DRIVE_ID);
             if (StringUtil.isNotBlank(driveId)) {
                 if (logger.isDebugEnabled()) {
                     logger.debug("crawling doclument library drive: {}", driveId);
@@ -200,49 +204,49 @@ public class OneDriveDataStore extends Office365DataStore {
         }
     }
 
-    protected Office365Client createClient(final Map<String, String> params) {
+    protected Office365Client createClient(final DataStoreParams params) {
         return new Office365Client(params);
     }
 
-    protected UrlFilter getUrlFilter(final Map<String, String> paramMap) {
+    protected UrlFilter getUrlFilter(final DataStoreParams paramMap) {
         final UrlFilter urlFilter = ComponentUtil.getComponent(UrlFilter.class);
-        final String include = paramMap.get(INCLUDE_PATTERN);
+        final String include = paramMap.getAsString(INCLUDE_PATTERN);
         if (StringUtil.isNotBlank(include)) {
             urlFilter.addInclude(include);
         }
-        final String exclude = paramMap.get(EXCLUDE_PATTERN);
+        final String exclude = paramMap.getAsString(EXCLUDE_PATTERN);
         if (StringUtil.isNotBlank(exclude)) {
             urlFilter.addExclude(exclude);
         }
-        urlFilter.init(paramMap.get(Constants.CRAWLING_INFO_ID));
+        urlFilter.init(paramMap.getAsString(Constants.CRAWLING_INFO_ID));
         if (logger.isDebugEnabled()) {
             logger.debug("urlFilter: {}", urlFilter);
         }
         return urlFilter;
     }
 
-    protected boolean isSharedDocumentsDriveCrawler(final Map<String, String> paramMap) {
-        return Constants.TRUE.equalsIgnoreCase(paramMap.getOrDefault(SHARED_DOCUMENTS_DRIVE_CRAWLER, Constants.TRUE));
+    protected boolean isSharedDocumentsDriveCrawler(final DataStoreParams paramMap) {
+        return Constants.TRUE.equalsIgnoreCase(paramMap.getAsString(SHARED_DOCUMENTS_DRIVE_CRAWLER, Constants.TRUE));
     }
 
-    protected boolean isUserDriveCrawler(final Map<String, String> paramMap) {
-        return Constants.TRUE.equalsIgnoreCase(paramMap.getOrDefault(USER_DRIVE_CRAWLER, Constants.TRUE));
+    protected boolean isUserDriveCrawler(final DataStoreParams paramMap) {
+        return Constants.TRUE.equalsIgnoreCase(paramMap.getAsString(USER_DRIVE_CRAWLER, Constants.TRUE));
     }
 
-    protected boolean isGroupDriveCrawler(final Map<String, String> paramMap) {
-        return Constants.TRUE.equalsIgnoreCase(paramMap.getOrDefault(GROUP_DRIVE_CRAWLER, Constants.TRUE));
+    protected boolean isGroupDriveCrawler(final DataStoreParams paramMap) {
+        return Constants.TRUE.equalsIgnoreCase(paramMap.getAsString(GROUP_DRIVE_CRAWLER, Constants.TRUE));
     }
 
-    protected boolean isIgnoreFolder(final Map<String, String> paramMap) {
-        return Constants.TRUE.equalsIgnoreCase(paramMap.getOrDefault(IGNORE_FOLDER, Constants.TRUE));
+    protected boolean isIgnoreFolder(final DataStoreParams paramMap) {
+        return Constants.TRUE.equalsIgnoreCase(paramMap.getAsString(IGNORE_FOLDER, Constants.TRUE));
     }
 
-    protected boolean isIgnoreError(final Map<String, String> paramMap) {
-        return Constants.TRUE.equalsIgnoreCase(paramMap.getOrDefault(IGNORE_ERROR, Constants.TRUE));
+    protected boolean isIgnoreError(final DataStoreParams paramMap) {
+        return Constants.TRUE.equalsIgnoreCase(paramMap.getAsString(IGNORE_ERROR, Constants.TRUE));
     }
 
-    protected long getMaxSize(final Map<String, String> paramMap) {
-        final String value = paramMap.get(MAX_SIZE);
+    protected long getMaxSize(final DataStoreParams paramMap) {
+        final String value = paramMap.getAsString(MAX_SIZE);
         try {
             return StringUtil.isNotBlank(value) ? Long.parseLong(value) : DEFAULT_MAX_SIZE;
         } catch (final NumberFormatException e) {
@@ -250,13 +254,13 @@ public class OneDriveDataStore extends Office365DataStore {
         }
     }
 
-    protected String[] getSupportedMimeTypes(final Map<String, String> paramMap) {
-        return StreamUtil.split(paramMap.getOrDefault(SUPPORTED_MIMETYPES, ".*"), ",")
+    protected String[] getSupportedMimeTypes(final DataStoreParams paramMap) {
+        return StreamUtil.split(paramMap.getAsString(SUPPORTED_MIMETYPES, ".*"), ",")
                 .get(stream -> stream.map(String::trim).toArray(n -> new String[n]));
     }
 
     protected void storeSharedDocumentsDrive(final DataConfig dataConfig, final IndexUpdateCallback callback,
-            final Map<String, Object> configMap, final Map<String, String> paramMap, final Map<String, String> scriptMap,
+            final Map<String, Object> configMap, final DataStoreParams paramMap, final Map<String, String> scriptMap,
             final Map<String, Object> defaultDataMap, final ExecutorService executorService, final Office365Client client,
             final String driveId) {
         getDriveItemsInDrive(client, c -> driveId != null ? c.drives(driveId) : c.drive(),
@@ -265,7 +269,7 @@ public class OneDriveDataStore extends Office365DataStore {
     }
 
     protected void storeUsersDrive(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, Object> configMap,
-            final Map<String, String> paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
+            final DataStoreParams paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
             final ExecutorService executorService, final Office365Client client) {
         getLicensedUsers(client, user -> {
             try {
@@ -285,7 +289,7 @@ public class OneDriveDataStore extends Office365DataStore {
     }
 
     protected void storeGroupsDrive(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, Object> configMap,
-            final Map<String, String> paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
+            final DataStoreParams paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
             final ExecutorService executorService, final Office365Client client) {
         getOffice365Groups(client, group -> {
             getDriveItemsInDrive(client, c -> c.groups(group.id).drive(), //
@@ -295,13 +299,16 @@ public class OneDriveDataStore extends Office365DataStore {
     }
 
     protected void processDriveItem(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, Object> configMap,
-            final Map<String, String> paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
+            final DataStoreParams paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
             final Office365Client client, final Function<GraphServiceClient<Request>, DriveRequestBuilder> builder, final DriveItem item,
             final List<String> roles) {
+        final CrawlerStatsHelper crawlerStatsHelper = ComponentUtil.getCrawlerStatsHelper();
         final String mimetype;
         final Hashes hashes;
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
+        final StatsKeyObject statsKey = new StatsKeyObject(item.webUrl);
         try {
+            crawlerStatsHelper.begin(statsKey);
             if (item.file != null) {
                 mimetype = item.file.mimeType;
                 hashes = item.file.hashes;
@@ -313,6 +320,7 @@ public class OneDriveDataStore extends Office365DataStore {
                 if (logger.isDebugEnabled()) {
                     logger.debug("Ignore item: {}", item.webUrl);
                 }
+                crawlerStatsHelper.discard(statsKey);
                 return;
             }
 
@@ -321,6 +329,7 @@ public class OneDriveDataStore extends Office365DataStore {
                 if (logger.isDebugEnabled()) {
                     logger.debug("{} is not an indexing target.", mimetype);
                 }
+                crawlerStatsHelper.discard(statsKey);
                 return;
             }
 
@@ -330,6 +339,7 @@ public class OneDriveDataStore extends Office365DataStore {
                 if (logger.isDebugEnabled()) {
                     logger.debug("Not matched: {}", url);
                 }
+                crawlerStatsHelper.discard(statsKey);
                 return;
             }
 
@@ -337,7 +347,7 @@ public class OneDriveDataStore extends Office365DataStore {
 
             final boolean ignoreError = ((Boolean) configMap.get(IGNORE_ERROR));
 
-            final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
+            final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap.asMap());
             final Map<String, Object> filesMap = new HashMap<>();
 
             if (item.size.longValue() > ((Long) configMap.get(MAX_SIZE)).longValue()) {
@@ -383,12 +393,14 @@ public class OneDriveDataStore extends Office365DataStore {
             final List<String> permissions = getDriveItemPermissions(client, builder, item);
             roles.forEach(permissions::add);
             final PermissionHelper permissionHelper = ComponentUtil.getPermissionHelper();
-            StreamUtil.split(paramMap.get(DEFAULT_PERMISSIONS), ",")
+            StreamUtil.split(paramMap.getAsString(DEFAULT_PERMISSIONS), ",")
                     .of(stream -> stream.filter(StringUtil::isNotBlank).map(permissionHelper::encode).forEach(permissions::add));
             filesMap.put(FILE_ROLES, permissions.stream().distinct().collect(Collectors.toList()));
 
-            resultMap.put("files", filesMap); // TODO deprecated
             resultMap.put(FILE, filesMap);
+
+            crawlerStatsHelper.record(statsKey, StatsAction.PREPARED);
+
             if (logger.isDebugEnabled()) {
                 logger.debug("filesMap: {}", filesMap);
             }
@@ -400,17 +412,25 @@ public class OneDriveDataStore extends Office365DataStore {
                     dataMap.put(entry.getKey(), convertValue);
                 }
             }
+
+            crawlerStatsHelper.record(statsKey, StatsAction.EVALUATED);
+
             if (logger.isDebugEnabled()) {
                 logger.debug("dataMap: {}", dataMap);
             }
 
+            if (dataMap.get("url") instanceof final String statsUrl) {
+                statsKey.setUrl(statsUrl);
+            }
+
             callback.store(paramMap, dataMap);
+            crawlerStatsHelper.record(statsKey, StatsAction.FINISHED);
         } catch (final CrawlingAccessException e) {
-            logger.warn("Crawling Access Exception at : " + dataMap, e);
+            logger.warn("Crawling Access Exception at : {}", dataMap, e);
 
             Throwable target = e;
-            if (target instanceof MultipleCrawlingAccessException) {
-                final Throwable[] causes = ((MultipleCrawlingAccessException) target).getCauses();
+            if (target instanceof final MultipleCrawlingAccessException ex) {
+                final Throwable[] causes = ex.getCauses();
                 if (causes.length > 0) {
                     target = causes[causes.length - 1];
                 }
@@ -426,10 +446,14 @@ public class OneDriveDataStore extends Office365DataStore {
 
             final FailureUrlService failureUrlService = ComponentUtil.getComponent(FailureUrlService.class);
             failureUrlService.store(dataConfig, errorName, item.webUrl, target);
+            crawlerStatsHelper.record(statsKey, StatsAction.ACCESS_EXCEPTION);
         } catch (final Throwable t) {
-            logger.warn("Crawling Access Exception at : " + dataMap, t);
+            logger.warn("Crawling Access Exception at : {}", dataMap, t);
             final FailureUrlService failureUrlService = ComponentUtil.getComponent(FailureUrlService.class);
             failureUrlService.store(dataConfig, t.getClass().getCanonicalName(), item.webUrl, t);
+            crawlerStatsHelper.record(statsKey, StatsAction.EXCEPTION);
+        } finally {
+            crawlerStatsHelper.done(statsKey);
         }
     }
 
@@ -512,7 +536,7 @@ public class OneDriveDataStore extends Office365DataStore {
         return null;
     }
 
-    protected String getUrl(final Map<String, Object> configMap, final Map<String, String> paramMap, final DriveItem item) {
+    protected String getUrl(final Map<String, Object> configMap, final DataStoreParams paramMap, final DriveItem item) {
         if (item.webUrl == null) {
             return null;
         }

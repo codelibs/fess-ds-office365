@@ -40,9 +40,13 @@ import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.exception.MultipleCrawlingAccessException;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.ds.office365.Office365Client.UserType;
+import org.codelibs.fess.entity.DataStoreParams;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.exception.DataStoreException;
 import org.codelibs.fess.exception.FessSystemException;
+import org.codelibs.fess.helper.CrawlerStatsHelper;
+import org.codelibs.fess.helper.CrawlerStatsHelper.StatsAction;
+import org.codelibs.fess.helper.CrawlerStatsHelper.StatsKeyObject;
 import org.codelibs.fess.helper.PermissionHelper;
 import org.codelibs.fess.helper.SystemHelper;
 import org.codelibs.fess.util.ComponentUtil;
@@ -110,7 +114,7 @@ public class TeamsDataStore extends Office365DataStore {
     }
 
     @Override
-    protected void storeData(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+    protected void storeData(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap) {
         final Map<String, Object> configMap = new HashMap<>();
         configMap.put(TEAM_ID, getTeamId(paramMap));
@@ -125,7 +129,7 @@ public class TeamsDataStore extends Office365DataStore {
             logger.debug("configMap: {}", configMap);
         }
 
-        final ExecutorService executorService = newFixedThreadPool(Integer.parseInt(paramMap.getOrDefault(NUMBER_OF_THREADS, "1")));
+        final ExecutorService executorService = newFixedThreadPool(Integer.parseInt(paramMap.getAsString(NUMBER_OF_THREADS, "1")));
         try (final Office365Client client = createClient(paramMap)) {
             processTeamMessages(dataConfig, callback, paramMap, scriptMap, defaultDataMap, configMap, client);
             processChatMessages(dataConfig, callback, paramMap, scriptMap, defaultDataMap, configMap, client);
@@ -142,7 +146,7 @@ public class TeamsDataStore extends Office365DataStore {
         }
     }
 
-    protected void processChatMessages(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+    protected void processChatMessages(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Map<String, Object> configMap,
             final Office365Client client) {
         final String chatId = (String) configMap.get(CHAT_ID);
@@ -193,7 +197,7 @@ public class TeamsDataStore extends Office365DataStore {
         return msg;
     }
 
-    protected void processTeamMessages(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+    protected void processTeamMessages(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Map<String, Object> configMap,
             final Office365Client client) {
         final String teamId = (String) configMap.get(TEAM_ID);
@@ -286,35 +290,35 @@ public class TeamsDataStore extends Office365DataStore {
         }
     }
 
-    protected DateTimeFormatter getTitleDateformat(final Map<String, String> paramMap) {
-        return DateTimeFormatter.ofPattern(paramMap.getOrDefault(TITLE_DATEFORMAT, "yyyy/MM/dd'T'HH:mm:ss"));
+    protected DateTimeFormatter getTitleDateformat(final DataStoreParams paramMap) {
+        return DateTimeFormatter.ofPattern(paramMap.getAsString(TITLE_DATEFORMAT, "yyyy/MM/dd'T'HH:mm:ss"));
     }
 
-    protected ZoneOffset getTitleTimezone(final Map<String, String> paramMap) {
-        return ZoneOffset.of(paramMap.getOrDefault(TITLE_TIMEZONE, "Z"));
+    protected ZoneOffset getTitleTimezone(final DataStoreParams paramMap) {
+        return ZoneOffset.of(paramMap.getAsString(TITLE_TIMEZONE, "Z"));
     }
 
-    protected Object isAppendAttachment(final Map<String, String> paramMap) {
-        return Constants.TRUE.equalsIgnoreCase(paramMap.getOrDefault(APPEND_ATTACHMENT, Constants.TRUE));
+    protected Object isAppendAttachment(final DataStoreParams paramMap) {
+        return Constants.TRUE.equalsIgnoreCase(paramMap.getAsString(APPEND_ATTACHMENT, Constants.TRUE));
     }
 
-    protected boolean isIgnoreReplies(final Map<String, String> paramMap) {
-        return Constants.TRUE.equalsIgnoreCase(paramMap.getOrDefault(IGNORE_REPLIES, Constants.FALSE));
+    protected boolean isIgnoreReplies(final DataStoreParams paramMap) {
+        return Constants.TRUE.equalsIgnoreCase(paramMap.getAsString(IGNORE_REPLIES, Constants.FALSE));
     }
 
-    protected String getTeamId(final Map<String, String> paramMap) {
-        return paramMap.get(TEAM_ID);
+    protected String getTeamId(final DataStoreParams paramMap) {
+        return paramMap.getAsString(TEAM_ID);
     }
 
-    protected String getChannelId(final Map<String, String> paramMap) {
-        return paramMap.get(CHANNEL_ID);
+    protected String getChannelId(final DataStoreParams paramMap) {
+        return paramMap.getAsString(CHANNEL_ID);
     }
 
-    protected String getChatId(final Map<String, String> paramMap) {
-        return paramMap.get(CHAT_ID);
+    protected String getChatId(final DataStoreParams paramMap) {
+        return paramMap.getAsString(CHAT_ID);
     }
 
-    protected Office365Client createClient(final Map<String, String> params) {
+    protected Office365Client createClient(final DataStoreParams params) {
         return new Office365Client(params);
     }
 
@@ -337,8 +341,7 @@ public class TeamsDataStore extends Office365DataStore {
         } else {
             logger.info("Member: {} : {}", m.id, m.displayName);
         }
-        if (m instanceof AadUserConversationMember) {
-            final AadUserConversationMember member = (AadUserConversationMember) m;
+        if (m instanceof AadUserConversationMember member) {
             final String id = member.userId;
             final String email = member.email;
             if (StringUtil.isNotBlank(email)) {
@@ -393,9 +396,10 @@ public class TeamsDataStore extends Office365DataStore {
     }
 
     protected Map<String, Object> processChatMessage(final DataConfig dataConfig, final IndexUpdateCallback callback,
-            final Map<String, Object> configMap, final Map<String, String> paramMap, final Map<String, String> scriptMap,
+            final Map<String, Object> configMap, final DataStoreParams paramMap, final Map<String, String> scriptMap,
             final Map<String, Object> defaultDataMap, final List<String> permissions, final ChatMessage message,
             final Consumer<Map<String, Object>> resultAppender) {
+        final CrawlerStatsHelper crawlerStatsHelper = ComponentUtil.getCrawlerStatsHelper();
         if (logger.isDebugEnabled()) {
             logger.debug("Message: {} : {}", message.id, ToStringBuilder.reflectionToString(message));
         } else {
@@ -403,11 +407,12 @@ public class TeamsDataStore extends Office365DataStore {
         }
 
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
-        final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
+        final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap.asMap());
         final Map<String, Object> messageMap = new HashMap<>();
+        final StatsKeyObject statsKey = new StatsKeyObject(message.webUrl);
 
         try {
-            new StringBuilder(100);
+            crawlerStatsHelper.begin(statsKey);
 
             messageMap.put(MESSAGE_CONTENT, getConent(configMap, message));
             messageMap.put(MESSAGE_TITLE, getTitle(configMap, message));
@@ -437,9 +442,12 @@ public class TeamsDataStore extends Office365DataStore {
             resultAppender.accept(resultMap);
 
             final PermissionHelper permissionHelper = ComponentUtil.getPermissionHelper();
-            StreamUtil.split(paramMap.get(DEFAULT_PERMISSIONS), ",")
+            StreamUtil.split(paramMap.getAsString(DEFAULT_PERMISSIONS), ",")
                     .of(stream -> stream.filter(StringUtil::isNotBlank).map(permissionHelper::encode).forEach(permissions::add));
             messageMap.put(MESSAGE_ROLES, permissions.stream().distinct().collect(Collectors.toList()));
+
+            crawlerStatsHelper.record(statsKey, StatsAction.PREPARED);
+
             if (logger.isDebugEnabled()) {
                 logger.debug("messageMap: {}", messageMap);
             }
@@ -451,17 +459,25 @@ public class TeamsDataStore extends Office365DataStore {
                     dataMap.put(entry.getKey(), convertValue);
                 }
             }
+
+            crawlerStatsHelper.record(statsKey, StatsAction.EVALUATED);
+
             if (logger.isDebugEnabled()) {
                 logger.debug("dataMap: {}", dataMap);
             }
 
+            if (dataMap.get("url") instanceof final String statsUrl) {
+                statsKey.setUrl(statsUrl);
+            }
+
             callback.store(paramMap, dataMap);
+            crawlerStatsHelper.record(statsKey, StatsAction.FINISHED);
         } catch (final CrawlingAccessException e) {
-            logger.warn("Crawling Access Exception at : " + dataMap, e);
+            logger.warn("Crawling Access Exception at : {}", dataMap, e);
 
             Throwable target = e;
-            if (target instanceof MultipleCrawlingAccessException) {
-                final Throwable[] causes = ((MultipleCrawlingAccessException) target).getCauses();
+            if (target instanceof final MultipleCrawlingAccessException ex) {
+                final Throwable[] causes = ex.getCauses();
                 if (causes.length > 0) {
                     target = causes[causes.length - 1];
                 }
@@ -477,10 +493,14 @@ public class TeamsDataStore extends Office365DataStore {
 
             final FailureUrlService failureUrlService = ComponentUtil.getComponent(FailureUrlService.class);
             failureUrlService.store(dataConfig, errorName, message.webUrl, target);
+            crawlerStatsHelper.record(statsKey, StatsAction.ACCESS_EXCEPTION);
         } catch (final Throwable t) {
-            logger.warn("Crawling Access Exception at : " + dataMap, t);
+            logger.warn("Crawling Access Exception at : {}", dataMap, t);
             final FailureUrlService failureUrlService = ComponentUtil.getComponent(FailureUrlService.class);
             failureUrlService.store(dataConfig, t.getClass().getCanonicalName(), message.webUrl, t);
+            crawlerStatsHelper.record(statsKey, StatsAction.EXCEPTION);
+        } finally {
+            crawlerStatsHelper.done(statsKey);
         }
 
         return messageMap;

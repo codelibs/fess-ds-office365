@@ -21,7 +21,6 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -30,6 +29,7 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
+import org.codelibs.fess.entity.DataStoreParams;
 import org.codelibs.fess.exception.DataStoreException;
 import org.codelibs.fess.util.ComponentUtil;
 import org.slf4j.Logger;
@@ -94,16 +94,16 @@ public class Office365Client implements Closeable {
     protected static final String INVALID_AUTHENTICATION_TOKEN = "InvalidAuthenticationToken";
 
     protected GraphServiceClient<Request> client;
-    protected Map<String, String> params;
+    protected DataStoreParams params;
     protected LoadingCache<String, UserType> userTypeCache;
     protected LoadingCache<String, String[]> groupIdCache;
 
-    public Office365Client(final Map<String, String> params) {
+    public Office365Client(final DataStoreParams params) {
         this.params = params;
 
-        final String tenant = params.getOrDefault(TENANT_PARAM, StringUtil.EMPTY);
-        final String clientId = params.getOrDefault(CLIENT_ID_PARAM, StringUtil.EMPTY);
-        final String clientSecret = params.getOrDefault(CLIENT_SECRET_PARAM, StringUtil.EMPTY);
+        final String tenant = params.getAsString(TENANT_PARAM, StringUtil.EMPTY);
+        final String clientId = params.getAsString(CLIENT_ID_PARAM, StringUtil.EMPTY);
+        final String clientSecret = params.getAsString(CLIENT_SECRET_PARAM, StringUtil.EMPTY);
         if (tenant.isEmpty() || clientId.isEmpty() || clientSecret.isEmpty()) {
             throw new DataStoreException("parameter '" + //
                     TENANT_PARAM + "', '" + //
@@ -147,7 +147,7 @@ public class Office365Client implements Closeable {
             throw new DataStoreException("Failed to create a client.", e);
         }
 
-        userTypeCache = CacheBuilder.newBuilder().maximumSize(Integer.parseInt(params.getOrDefault(USER_TYPE_CACHE_SIZE, "10000")))
+        userTypeCache = CacheBuilder.newBuilder().maximumSize(Integer.parseInt(params.getAsString(USER_TYPE_CACHE_SIZE, "10000")))
                 .build(new CacheLoader<String, UserType>() {
                     @Override
                     public UserType load(final String key) {
@@ -166,7 +166,7 @@ public class Office365Client implements Closeable {
                     }
                 });
 
-        groupIdCache = CacheBuilder.newBuilder().maximumSize(Integer.parseInt(params.getOrDefault(GROUP_ID_CACHE_SIZE, "10000")))
+        groupIdCache = CacheBuilder.newBuilder().maximumSize(Integer.parseInt(params.getAsString(GROUP_ID_CACHE_SIZE, "10000")))
                 .build(new CacheLoader<String, String[]>() {
                     @Override
                     public String[] load(final String email) {

@@ -15,13 +15,11 @@
  */
 package org.codelibs.fess.ds.office365;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-
 import java.util.HashMap;
 import java.util.Map;
 
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
+import org.codelibs.fess.entity.DataStoreParams;
 import org.codelibs.fess.util.ComponentUtil;
 import org.dbflute.utflute.lastaflute.LastaFluteTestCase;
 import org.slf4j.Logger;
@@ -65,7 +63,7 @@ public class OneDriveDataStoreTest extends LastaFluteTestCase {
 
     public void test_getUrl() {
         Map<String, Object> configMap = new HashMap<>();
-        Map<String, String> paramMap = new HashMap<>();
+        DataStoreParams paramMap = new DataStoreParams();
         DriveItem item = new DriveItem();
 
         assertNull(dataStore.getUrl(configMap, paramMap, item));
@@ -93,7 +91,7 @@ public class OneDriveDataStoreTest extends LastaFluteTestCase {
         final TikaExtractor tikaExtractor = new TikaExtractor();
         tikaExtractor.init();
         ComponentUtil.register(tikaExtractor, "tikaExtractor");
-    
+
         final DataConfig dataConfig = new DataConfig();
         final Map<String, String> paramMap = new HashMap<>();
         paramMap.put("tenant", tenant);
@@ -101,7 +99,7 @@ public class OneDriveDataStoreTest extends LastaFluteTestCase {
         paramMap.put("client_secret", clientSecret);
         final Map<String, String> scriptMap = new HashMap<>();
         final Map<String, Object> defaultDataMap = new HashMap<>();
-    
+
         final FessConfig fessConfig = ComponentUtil.getFessConfig();
         scriptMap.put(fessConfig.getIndexFieldTitle(), "files.name");
         scriptMap.put(fessConfig.getIndexFieldContent(), "files.description + \"\\n\"+ files.contents");
@@ -111,7 +109,7 @@ public class OneDriveDataStoreTest extends LastaFluteTestCase {
         scriptMap.put(fessConfig.getIndexFieldContentLength(), "files.size");
         scriptMap.put(fessConfig.getIndexFieldUrl(), "files.web_url");
         scriptMap.put(fessConfig.getIndexFieldRole(), "files.roles");
-    
+
         dataStore.storeData(dataConfig, new TestCallback() {
             @Override
             public void test(Map<String, String> paramMap, Map<String, Object> dataMap) {
@@ -171,10 +169,10 @@ public class OneDriveDataStoreTest extends LastaFluteTestCase {
         private long documentSize = 0;
         private long executeTime = 0;
 
-        abstract void test(Map<String, String> paramMap, Map<String, Object> dataMap);
+        abstract void test(DataStoreParams paramMap, Map<String, Object> dataMap);
 
         @Override
-        public void store(Map<String, String> paramMap, Map<String, Object> dataMap) {
+        public void store(DataStoreParams paramMap, Map<String, Object> dataMap) {
             final long startTime = System.currentTimeMillis();
             test(paramMap, dataMap);
             executeTime += System.currentTimeMillis() - startTime;
