@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+import org.codelibs.core.exception.InterruptedRuntimeException;
 import org.codelibs.fess.Constants;
 import org.codelibs.fess.app.service.FailureUrlService;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
@@ -103,7 +104,7 @@ public class OneNoteDataStore extends Office365DataStore {
             executorService.shutdown();
             executorService.awaitTermination(60, TimeUnit.SECONDS);
         } catch (final InterruptedException e) {
-            throw new DataStoreException("Interrupted.", e);
+            throw new InterruptedRuntimeException(e);
         } finally {
             executorService.shutdownNow();
         }

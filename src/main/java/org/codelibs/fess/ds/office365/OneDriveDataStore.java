@@ -31,6 +31,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.codelibs.core.exception.InterruptedRuntimeException;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.stream.StreamUtil;
 import org.codelibs.fess.Constants;
@@ -198,7 +199,7 @@ public class OneDriveDataStore extends Office365DataStore {
             executorService.shutdown();
             executorService.awaitTermination(60, TimeUnit.SECONDS);
         } catch (final InterruptedException e) {
-            throw new DataStoreException("Interrupted.", e);
+            throw new InterruptedRuntimeException(e);
         } finally {
             executorService.shutdownNow();
         }
@@ -282,9 +283,9 @@ public class OneDriveDataStore extends Office365DataStore {
         });
     }
 
-    protected void isInterrupted(final Exception e) throws InterruptedException {
+    protected void isInterrupted(final Exception e) {
         if (e instanceof InterruptedException) {
-            throw (InterruptedException) e;
+            throw new InterruptedRuntimeException((InterruptedException) e);
         }
     }
 
