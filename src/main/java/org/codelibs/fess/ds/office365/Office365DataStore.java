@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import org.codelibs.fess.ds.AbstractDataStore;
+import org.codelibs.fess.ds.office365.client.Office365Client;
 import org.codelibs.fess.util.ComponentUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -40,7 +40,8 @@ import org.codelibs.fess.app.service.FailureUrlService;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.exception.MultipleCrawlingAccessException;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
-import org.codelibs.fess.ds.office365.Office365Client.UserType;
+import org.codelibs.fess.ds.office365.client.Office365Client;
+import org.codelibs.fess.ds.office365.client.Office365Client.UserType;
 import org.codelibs.fess.entity.DataStoreParams;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.exception.DataStoreException;
@@ -79,6 +80,7 @@ public class TeamsDataStore extends Office365DataStore {
     protected static final String DEFAULT_PERMISSIONS = "default_permissions";
     private static final String IGNORE_REPLIES = "ignore_replies";
     private static final String APPEND_ATTACHMENT = "append_attachment";
+    private static final String IGNORE_SYSTEM_EVENTS = "ignore_system_events";
     private static final String TITLE_DATEFORMAT = "title_dateformat";
     private static final String TITLE_TIMEZONE = "title_timezone_offset";
 
@@ -125,6 +127,7 @@ public class TeamsDataStore extends Office365DataStore {
         configMap.put(APPEND_ATTACHMENT, isAppendAttachment(paramMap));
         configMap.put(TITLE_DATEFORMAT, getTitleDateformat(paramMap));
         configMap.put(TITLE_TIMEZONE, getTitleTimezone(paramMap));
+        configMap.put(IGNORE_SYSTEM_EVENTS, isIgnoreSystemEvents(paramMap));
 
         if (logger.isDebugEnabled()) {
             logger.debug("configMap: {}", configMap);
@@ -155,14 +158,14 @@ public class TeamsDataStore extends Office365DataStore {
             final List<ChatMessage> msgList = new ArrayList<>();
             client.getChatMessages(Collections.emptyList(), m -> msgList.add(m), chatId);
             if (!msgList.isEmpty()) {
-                final ChatMessage m = createChatMessage(msgList);
+                final ChatMessage m = createChatMessage(msgList, client);
                 processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap, getGroupRoles(client, chatId), m,
-                        map -> map.put("messages", msgList));
+                        map -> map.put("messages", msgList), client);
             }
         }
     }
 
-    protected ChatMessage createChatMessage(final List<ChatMessage> msgList) {
+    protected ChatMessage createChatMessage(final List<ChatMessage> msgList, final Office365Client client) {
         final ChatMessage msg = new ChatMessage();
         final ChatMessage defaultMsg = msgList.get(0);
         msg.attachments = new ArrayList<>();
@@ -172,7 +175,7 @@ public class TeamsDataStore extends Office365DataStore {
         final StringBuilder bodyBuf = new StringBuilder(1000);
         final Map<String, Object> configMap = new HashMap<>();
         configMap.put(APPEND_ATTACHMENT, false);
-        msgList.stream().forEach(m -> bodyBuf.append(getConent(configMap, m)));
+        msgList.stream().forEach(m -> bodyBuf.append(getConent(configMap, m, client)));
         msg.body.content = bodyBuf.toString();
         msg.channelIdentity = defaultMsg.channelIdentity;
         msg.createdDateTime = defaultMsg.createdDateTime;
@@ -218,15 +221,15 @@ public class TeamsDataStore extends Office365DataStore {
                             defaultDataMap, getGroupRoles(client, g.id, c.id), m, map -> {
                                 map.put(TEAM, g);
                                 map.put(CHANNEL, c);
-                            });
-                    if (!((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
+                            }, client);
+                    if (message != null && !((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
                         client.getTeamReplyMessages(Collections.emptyList(), r -> {
                             processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap,
                                     getGroupRoles(client, g.id, c.id), r, map -> {
                                         map.put(TEAM, g);
                                         map.put(CHANNEL, c);
                                         map.put(PARENT, message);
-                                    });
+                                    }, client);
                         }, teamId, channelId, (String) message.get(MESSAGE_ID));
                     }
                 }, teamId, channelId);
@@ -242,15 +245,15 @@ public class TeamsDataStore extends Office365DataStore {
                                 defaultDataMap, getGroupRoles(client, g.id, c.id), m, map -> {
                                     map.put(TEAM, g);
                                     map.put(CHANNEL, c);
-                                });
-                        if (!((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
+                                }, client);
+                        if (message != null && !((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
                             client.getTeamReplyMessages(Collections.emptyList(), r -> {
                                 processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap,
                                         getGroupRoles(client, g.id, c.id), r, map -> {
                                             map.put(TEAM, g);
                                             map.put(CHANNEL, c);
                                             map.put(PARENT, message);
-                                        });
+                                        }, client);
                             }, teamId, c.id, (String) message.get(MESSAGE_ID));
                         }
                     }, teamId, c.id);
@@ -274,15 +277,15 @@ public class TeamsDataStore extends Office365DataStore {
                                 defaultDataMap, getGroupRoles(client, g.id, c.id), m, map -> {
                                     map.put(TEAM, g);
                                     map.put(CHANNEL, c);
-                                });
-                        if (!((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
+                                }, client);
+                        if (message != null && !((Boolean) configMap.get(IGNORE_REPLIES)).booleanValue()) {
                             client.getTeamReplyMessages(Collections.emptyList(), r -> {
                                 processChatMessage(dataConfig, callback, configMap, paramMap, scriptMap, defaultDataMap,
                                         getGroupRoles(client, g.id, c.id), r, map -> {
                                             map.put(TEAM, g);
                                             map.put(CHANNEL, c);
                                             map.put(PARENT, message);
-                                        });
+                                        }, client);
                             }, g.id, c.id, (String) message.get(MESSAGE_ID));
                         }
                     }, g.id, c.id);
@@ -297,6 +300,10 @@ public class TeamsDataStore extends Office365DataStore {
 
     protected ZoneOffset getTitleTimezone(final DataStoreParams paramMap) {
         return ZoneOffset.of(paramMap.getAsString(TITLE_TIMEZONE, "Z"));
+    }
+
+    protected Object isIgnoreSystemEvents(final DataStoreParams paramMap) {
+        return Constants.TRUE.equalsIgnoreCase(paramMap.getAsString(IGNORE_SYSTEM_EVENTS, Constants.TRUE));
     }
 
     protected Object isAppendAttachment(final DataStoreParams paramMap) {
@@ -396,15 +403,31 @@ public class TeamsDataStore extends Office365DataStore {
         }
     }
 
+    protected boolean isSystemEvent(final Map<String, Object> configMap, final ChatMessage message) {
+        if (((Boolean) configMap.get(IGNORE_SYSTEM_EVENTS)).booleanValue()) {
+            if (message.body != null && "<systemEventMessage/>".equals(message.body.content)) {
+                return true;
+            }
+
+            return false;
+        }
+        return false;
+    }
+
     protected Map<String, Object> processChatMessage(final DataConfig dataConfig, final IndexUpdateCallback callback,
             final Map<String, Object> configMap, final DataStoreParams paramMap, final Map<String, String> scriptMap,
             final Map<String, Object> defaultDataMap, final List<String> permissions, final ChatMessage message,
-            final Consumer<Map<String, Object>> resultAppender) {
+            final Consumer<Map<String, Object>> resultAppender, final Office365Client client) {
         final CrawlerStatsHelper crawlerStatsHelper = ComponentUtil.getCrawlerStatsHelper();
         if (logger.isDebugEnabled()) {
             logger.debug("Message: {} : {}", message.id, ToStringBuilder.reflectionToString(message));
         } else {
             logger.info("Message: {} : {}", message.id, message.webUrl);
+        }
+
+        if (isSystemEvent(configMap, message)) {
+            logger.info("Message {} is a system event.", message.id);
+            return null;
         }
 
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
@@ -415,7 +438,7 @@ public class TeamsDataStore extends Office365DataStore {
         try {
             crawlerStatsHelper.begin(statsKey);
 
-            messageMap.put(MESSAGE_CONTENT, getConent(configMap, message));
+            messageMap.put(MESSAGE_CONTENT, getConent(configMap, message, client));
             messageMap.put(MESSAGE_TITLE, getTitle(configMap, message));
 
             messageMap.put(MESSAGE_ATTACHMENTS, message.attachments);
@@ -532,7 +555,7 @@ public class TeamsDataStore extends Office365DataStore {
         return titleBuf.toString();
     }
 
-    protected String getConent(final Map<String, Object> configMap, final ChatMessage message) {
+    protected String getConent(final Map<String, Object> configMap, final ChatMessage message, final Office365Client client) {
         final StringBuilder bodyBuf = new StringBuilder(1000);
         if (message.body != null) {
             switch (message.body.contentType) {
@@ -540,7 +563,7 @@ public class TeamsDataStore extends Office365DataStore {
                 bodyBuf.append(stripHtmlTags(message.body.content));
                 break;
             case TEXT:
-                bodyBuf.append(message.body.content);
+                bodyBuf.append(normalizeTextContent(message.body.content));
                 break;
             default:
                 bodyBuf.append(message.body.content);
@@ -552,12 +575,21 @@ public class TeamsDataStore extends Office365DataStore {
                 if (StringUtil.isNotBlank(a.name)) {
                     bodyBuf.append('\n').append(a.name);
                 }
-                if (StringUtil.isNotBlank(a.content)) {
+                if (a.content != null) {
                     bodyBuf.append('\n').append(a.content);
+                } else {
+                    bodyBuf.append('\n').append(client.getAttachmentContent(a));
                 }
             });
         }
         return bodyBuf.toString();
+    }
+
+    protected String normalizeTextContent(final String content) {
+        if (StringUtil.isBlank(content)) {
+            return StringUtil.EMPTY;
+        }
+        return content.replaceAll("<attachment[^>]*></attachment>", StringUtil.EMPTY).trim();
     }
 
     protected String stripHtmlTags(final String value) {

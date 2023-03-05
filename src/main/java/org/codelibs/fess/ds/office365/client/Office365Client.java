@@ -13,12 +13,13 @@
  * either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  */
-package org.codelibs.fess.ds.office365;
+package org.codelibs.fess.ds.office365.client;
 
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -28,7 +29,7 @@ import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.codelibs.core.lang.StringUtil;
-import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
+import org.codelibs.fess.Constants;
 import org.codelibs.fess.entity.DataStoreParams;
 import org.codelibs.fess.exception.DataStoreException;
 import org.codelibs.fess.util.ComponentUtil;
@@ -49,6 +50,7 @@ import com.microsoft.graph.logger.LoggerLevel;
 import com.microsoft.graph.models.Channel;
 import com.microsoft.graph.models.Chat;
 import com.microsoft.graph.models.ChatMessage;
+import com.microsoft.graph.models.ChatMessageAttachment;
 import com.microsoft.graph.models.ConversationMember;
 import com.microsoft.graph.models.Drive;
 import com.microsoft.graph.models.Group;
@@ -90,6 +92,7 @@ public class Office365Client implements Closeable {
     protected static final String REFRESH_TOKEN_INTERVAL = "refresh_token_interval";
     protected static final String USER_TYPE_CACHE_SIZE = "user_type_cache_size";
     protected static final String GROUP_ID_CACHE_SIZE = "group_id_cache_size";
+    protected static final String MAX_DOWNLOAD_SIZE = "max_download_size";
 
     protected static final String INVALID_AUTHENTICATION_TOKEN = "InvalidAuthenticationToken";
 
@@ -97,6 +100,8 @@ public class Office365Client implements Closeable {
     protected DataStoreParams params;
     protected LoadingCache<String, UserType> userTypeCache;
     protected LoadingCache<String, String[]> groupIdCache;
+
+    protected int maxDownloadSize = 10_000_000;
 
     public Office365Client(final DataStoreParams params) {
         this.params = params;
@@ -115,6 +120,12 @@ public class Office365Client implements Closeable {
                 .clientSecret(clientSecret)//
                 .tenantId(tenant)//
                 .build();
+
+        try {
+            maxDownloadSize = Integer.parseInt(params.getAsString(MAX_DOWNLOAD_SIZE, Integer.toString(maxDownloadSize)));
+        } catch (NumberFormatException e) {
+            logger.warn("Failed to parse {}.", params.getAsString(MAX_DOWNLOAD_SIZE), e);
+        }
 
         final TokenCredentialAuthProvider tokenCredAuthProvider = new TokenCredentialAuthProvider(clientSecretCredential);
 
@@ -296,8 +307,8 @@ public class Office365Client implements Closeable {
         final StringBuilder sb = new StringBuilder();
         sb.append(page.title).append('\n');
         try (final InputStream in = builder.pages(page.id).content().buildRequest().get()) {
-            final TikaExtractor extractor = ComponentUtil.getComponent("tikaExtractor");
-            sb.append(extractor.getText(in, null).getContent());
+            sb.append(ComponentUtil.getExtractorFactory().builder(in, Collections.emptyMap()).maxContentLength(maxDownloadSize).extract()
+                    .getContent());
         } catch (final IOException e) {
             logger.warn("Failed to get contents of Page: {}", page.title, e);
         }
@@ -459,5 +470,25 @@ public class Office365Client implements Closeable {
             page = page.getNextPage().buildRequest().get();
             page.getCurrentPage().forEach(consumer::accept);
         }
+    }
+
+    public String getAttachmentContent(final ChatMessageAttachment attachment) {
+        if (attachment.content != null || StringUtil.isBlank(attachment.contentUrl)) {
+            return StringUtil.EMPTY;
+        }
+        // https://learn.microsoft.com/en-us/answers/questions/1072289/download-directly-chat-attachment-using-contenturl
+        final String id = "u!" + Base64.getUrlEncoder().encodeToString(attachment.contentUrl.getBytes(Constants.CHARSET_UTF_8))
+                .replaceFirst("=+$", StringUtil.EMPTY).replace('/', '_').replace('+', '-');
+        try (InputStream in = client.shares(id).driveItem().content().buildRequest().get()) {
+            return ComponentUtil.getExtractorFactory().builder(in, null).filename(attachment.name).maxContentLength(maxDownloadSize)
+                    .extract().getContent();
+        } catch (final Exception e) {
+            logger.warn("Could not read {}", id, e);
+            return StringUtil.EMPTY;
+        }
+    }
+
+    public int getMaxDownloadSize() {
+        return maxDownloadSize;
     }
 }

@@ -13,11 +13,12 @@
  * either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  */
-package org.codelibs.fess.ds.office365;
+package org.codelibs.fess.ds.office365.client;
 
 import java.util.Collections;
 
 import org.apache.commons.lang3.builder.ToStringBuilder;
+import org.codelibs.fess.ds.office365.client.Office365Client;
 import org.codelibs.fess.entity.DataStoreParams;
 import org.codelibs.fess.util.ComponentUtil;
 import org.dbflute.utflute.lastaflute.LastaFluteTestCase;

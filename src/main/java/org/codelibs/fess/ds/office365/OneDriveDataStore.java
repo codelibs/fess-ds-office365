@@ -39,14 +39,13 @@ import org.codelibs.fess.app.service.FailureUrlService;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.exception.MaxLengthExceededException;
 import org.codelibs.fess.crawler.exception.MultipleCrawlingAccessException;
-import org.codelibs.fess.crawler.extractor.Extractor;
 import org.codelibs.fess.crawler.filter.UrlFilter;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
-import org.codelibs.fess.ds.office365.Office365Client.UserType;
+import org.codelibs.fess.ds.office365.client.Office365Client;
+import org.codelibs.fess.ds.office365.client.Office365Client.UserType;
 import org.codelibs.fess.entity.DataStoreParams;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.exception.DataStoreCrawlingException;
-import org.codelibs.fess.exception.DataStoreException;
 import org.codelibs.fess.helper.CrawlerStatsHelper;
 import org.codelibs.fess.helper.CrawlerStatsHelper.StatsAction;
 import org.codelibs.fess.helper.CrawlerStatsHelper.StatsKeyObject;
@@ -83,7 +82,7 @@ public class OneDriveDataStore extends Office365DataStore {
     protected static final String DRIVE_INFO = "drive_info";
 
     // parameters
-    protected static final String MAX_SIZE = "max_size";
+    protected static final String MAX_DOWNLOAD_SIZE = "max_download_size";
     protected static final String IGNORE_FOLDER = "ignore_folder";
     protected static final String IGNORE_ERROR = "ignore_error";
     protected static final String SUPPORTED_MIMETYPES = "supported_mimetypes";
@@ -146,7 +145,7 @@ public class OneDriveDataStore extends Office365DataStore {
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap) {
 
         final Map<String, Object> configMap = new HashMap<>();
-        configMap.put(MAX_SIZE, getMaxSize(paramMap));
+        configMap.put(MAX_DOWNLOAD_SIZE, getMaxSize(paramMap));
         configMap.put(IGNORE_FOLDER, isIgnoreFolder(paramMap));
         configMap.put(IGNORE_ERROR, isIgnoreError(paramMap));
         configMap.put(SUPPORTED_MIMETYPES, getSupportedMimeTypes(paramMap));
@@ -247,7 +246,7 @@ public class OneDriveDataStore extends Office365DataStore {
     }
 
     protected long getMaxSize(final DataStoreParams paramMap) {
-        final String value = paramMap.getAsString(MAX_SIZE);
+        final String value = paramMap.getAsString(MAX_DOWNLOAD_SIZE);
         try {
             return StringUtil.isNotBlank(value) ? Long.parseLong(value) : DEFAULT_MAX_SIZE;
         } catch (final NumberFormatException e) {
@@ -352,9 +351,9 @@ public class OneDriveDataStore extends Office365DataStore {
             final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap.asMap());
             final Map<String, Object> filesMap = new HashMap<>();
 
-            if (item.size.longValue() > ((Long) configMap.get(MAX_SIZE)).longValue()) {
-                throw new MaxLengthExceededException("The content length (" + item.size + " byte) is over " + configMap.get(MAX_SIZE)
-                        + " byte. The url is " + item.webUrl);
+            if (item.size.longValue() > ((Long) configMap.get(MAX_DOWNLOAD_SIZE)).longValue()) {
+                throw new MaxLengthExceededException("The content length (" + item.size + " byte) is over "
+                        + configMap.get(MAX_DOWNLOAD_SIZE) + " byte. The url is " + item.webUrl);
             }
 
             final String filetype = ComponentUtil.getFileTypeHelper().get(mimetype);
@@ -583,16 +582,9 @@ public class OneDriveDataStore extends Office365DataStore {
     protected String getDriveItemContents(final Office365Client client,
             final Function<GraphServiceClient<Request>, DriveRequestBuilder> builder, final DriveItem item, final boolean ignoreError) {
         if (item.file != null) {
-            final String mimeType = item.file.mimeType;
             try (final InputStream in = client.getDriveContent(builder, item.id)) {
-                Extractor extractor = ComponentUtil.getExtractorFactory().getExtractor(mimeType);
-                if (extractor == null) {
-                    if (logger.isDebugEnabled()) {
-                        logger.debug("use a defautl extractor as {} by {}", extractorName, mimeType);
-                    }
-                    extractor = ComponentUtil.getComponent(extractorName);
-                }
-                return extractor.getText(in, null).getContent();
+                return ComponentUtil.getExtractorFactory().builder(in, Collections.emptyMap()).filename(item.name)
+                        .maxContentLength(client.getMaxDownloadSize()).extractorName(extractorName).extract().getContent();
             } catch (final Exception e) {
                 if (ignoreError) {
                     logger.warn("Failed to get contents: {}", item.name, e);
