@@ -56,10 +56,17 @@
 									<include>io.projectreactor.netty:reactor-netty-http</include>
 									<include>io.projectreactor.netty:reactor-netty-core</include>
 									<include>io.projectreactor:reactor-core</include>
+									<include>io.netty:netty-buffer</include>
+									<include>io.netty:netty-codec</include>
 									<include>io.netty:netty-codec-dns</include>
+									<include>io.netty:netty-codec-http</include>
 									<include>io.netty:netty-codec-http2</include>
+									<include>io.netty:netty-common</include>
+									<include>io.netty:netty-handler</include>
 									<include>io.netty:netty-handler-proxy</include>
+									<include>io.netty:netty-resolver</include>
 									<include>io.netty:netty-resolver-dns</include>
+									<include>io.netty:netty-transport</include>
 									<include>io.netty:netty-transport-native-unix-common</include>
 									<include>org.reactivestreams:reactive-streams</include>
 								</includes>
@@ -68,11 +75,19 @@
 								<filter>
 									<artifact>*:*</artifact>
 									<excludes>
+										<exclude>META-INF/MANIFEST.MF</exclude>
+										<exclude>META-INF/LICENSE</exclude>
 										<exclude>META-INF/*.SF</exclude>
 										<exclude>META-INF/*.RSA</exclude>
 									</excludes>
 								</filter>
 							</filters>
+							<relocations>
+								<relocation>
+									<pattern>io.netty</pattern>
+									<shadedPattern>org.codelibs.fess.ds.office365.netty</shadedPattern>
+								</relocation>
+							</relocations>
 						</configuration>
 					</execution>
 				</executions>
