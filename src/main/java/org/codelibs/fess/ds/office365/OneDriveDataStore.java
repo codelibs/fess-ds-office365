@@ -40,6 +40,7 @@ import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.exception.MaxLengthExceededException;
 import org.codelibs.fess.crawler.exception.MultipleCrawlingAccessException;
 import org.codelibs.fess.crawler.filter.UrlFilter;
+import org.codelibs.fess.crawler.helper.ContentLengthHelper;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.ds.office365.client.Office365Client;
 import org.codelibs.fess.ds.office365.client.Office365Client.UserType;
@@ -72,7 +73,7 @@ public class OneDriveDataStore extends Office365DataStore {
 
     private static final Logger logger = LoggerFactory.getLogger(OneDriveDataStore.class);
 
-    protected static final long DEFAULT_MAX_SIZE = 10000000L; // 10m
+    protected static final long DEFAULT_MAX_SIZE = -1;
 
     protected static final String CURRENT_CRAWLER = "current_crawler";
     protected static final String CRAWLER_TYPE_GROUP = "group";
@@ -82,7 +83,7 @@ public class OneDriveDataStore extends Office365DataStore {
     protected static final String DRIVE_INFO = "drive_info";
 
     // parameters
-    protected static final String MAX_DOWNLOAD_SIZE = "max_download_size";
+    protected static final String MAX_CONTENT_LENGTH = "max_content_length";
     protected static final String IGNORE_FOLDER = "ignore_folder";
     protected static final String IGNORE_ERROR = "ignore_error";
     protected static final String SUPPORTED_MIMETYPES = "supported_mimetypes";
@@ -145,7 +146,7 @@ public class OneDriveDataStore extends Office365DataStore {
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap) {
 
         final Map<String, Object> configMap = new HashMap<>();
-        configMap.put(MAX_DOWNLOAD_SIZE, getMaxSize(paramMap));
+        configMap.put(MAX_CONTENT_LENGTH, getMaxSize(paramMap));
         configMap.put(IGNORE_FOLDER, isIgnoreFolder(paramMap));
         configMap.put(IGNORE_ERROR, isIgnoreError(paramMap));
         configMap.put(SUPPORTED_MIMETYPES, getSupportedMimeTypes(paramMap));
@@ -246,7 +247,7 @@ public class OneDriveDataStore extends Office365DataStore {
     }
 
     protected long getMaxSize(final DataStoreParams paramMap) {
-        final String value = paramMap.getAsString(MAX_DOWNLOAD_SIZE);
+        final String value = paramMap.getAsString(MAX_CONTENT_LENGTH);
         try {
             return StringUtil.isNotBlank(value) ? Long.parseLong(value) : DEFAULT_MAX_SIZE;
         } catch (final NumberFormatException e) {
@@ -351,15 +352,24 @@ public class OneDriveDataStore extends Office365DataStore {
             final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap.asMap());
             final Map<String, Object> filesMap = new HashMap<>();
 
-            if (item.size.longValue() > ((Long) configMap.get(MAX_DOWNLOAD_SIZE)).longValue()) {
-                throw new MaxLengthExceededException("The content length (" + item.size + " byte) is over "
-                        + configMap.get(MAX_DOWNLOAD_SIZE) + " byte. The url is " + item.webUrl);
+            long maxContentLength = ((Long) configMap.get(MAX_CONTENT_LENGTH)).longValue();
+            if (maxContentLength < 0) {
+                try {
+                    final ContentLengthHelper contentLengthHelper = ComponentUtil.getComponent("contentLengthHelper");
+                    maxContentLength = contentLengthHelper.getMaxLength(mimetype);
+                } catch (Exception e) {
+                    logger.warn("Failed to get maxContentLength.", e);
+                }
+            }
+            if (maxContentLength >= 0 && item.size.longValue() > maxContentLength) {
+                throw new MaxLengthExceededException(
+                        "The content length (" + item.size + " byte) is over " + maxContentLength + " byte. The url is " + item.webUrl);
             }
 
             final String filetype = ComponentUtil.getFileTypeHelper().get(mimetype);
             filesMap.put(FILE_NAME, item.name);
             filesMap.put(FILE_DESCRIPTION, item.description != null ? item.description : StringUtil.EMPTY);
-            filesMap.put(FILE_CONTENTS, getDriveItemContents(client, builder, item, ignoreError));
+            filesMap.put(FILE_CONTENTS, getDriveItemContents(client, builder, item, maxContentLength, ignoreError));
             filesMap.put(FILE_MIMETYPE, mimetype);
             filesMap.put(FILE_FILETYPE, filetype);
             filesMap.put(FILE_CREATED, item.createdDateTime);
@@ -463,7 +473,7 @@ public class OneDriveDataStore extends Office365DataStore {
         final List<String> permissions = new ArrayList<>();
         PermissionCollectionPage page = client.getDrivePermissions(builder, item.id);
         final Consumer<Permission> consumer = p -> {
-            if (p.grantedTo != null && p.grantedTo.user != null) {
+            if (p.grantedToV2 != null && p.grantedToV2.user != null) {
                 assignPermission(client, permissions, p);
             }
         };
@@ -477,7 +487,7 @@ public class OneDriveDataStore extends Office365DataStore {
 
     protected void assignPermission(final Office365Client client, final List<String> permissions, final Permission permission) {
         final SystemHelper systemHelper = ComponentUtil.getSystemHelper();
-        final String id = permission.grantedTo.user.id;
+        final String id = permission.grantedToV2.user.id;
         final String email = getUserEmail(permission);
         if (StringUtil.isNotBlank(email)) {
             final List<String> idList = new ArrayList<>();
@@ -530,9 +540,9 @@ public class OneDriveDataStore extends Office365DataStore {
     }
 
     protected String getUserEmail(final Permission permission) {
-        if (permission.grantedTo != null && permission.grantedTo.user != null && permission.grantedTo.user.displayName != null) {
+        if (permission.grantedToV2 != null && permission.grantedToV2.user != null && permission.grantedToV2.user.displayName != null) {
             // TODO email?
-            return permission.grantedTo.user.displayName;
+            return permission.grantedToV2.user.displayName;
         }
         return null;
     }
@@ -580,11 +590,12 @@ public class OneDriveDataStore extends Office365DataStore {
     }
 
     protected String getDriveItemContents(final Office365Client client,
-            final Function<GraphServiceClient<Request>, DriveRequestBuilder> builder, final DriveItem item, final boolean ignoreError) {
+            final Function<GraphServiceClient<Request>, DriveRequestBuilder> builder, final DriveItem item, final long maxContentLength,
+            final boolean ignoreError) {
         if (item.file != null) {
             try (final InputStream in = client.getDriveContent(builder, item.id)) {
                 return ComponentUtil.getExtractorFactory().builder(in, Collections.emptyMap()).filename(item.name)
-                        .maxContentLength(client.getMaxDownloadSize()).extractorName(extractorName).extract().getContent();
+                        .maxContentLength(maxContentLength).extractorName(extractorName).extract().getContent();
             } catch (final Exception e) {
                 if (ignoreError) {
                     logger.warn("Failed to get contents: {}", item.name, e);

@@ -92,7 +92,7 @@ public class Office365Client implements Closeable {
     protected static final String REFRESH_TOKEN_INTERVAL = "refresh_token_interval";
     protected static final String USER_TYPE_CACHE_SIZE = "user_type_cache_size";
     protected static final String GROUP_ID_CACHE_SIZE = "group_id_cache_size";
-    protected static final String MAX_DOWNLOAD_SIZE = "max_download_size";
+    protected static final String MAX_CONTENT_LENGTH = "max_content_length";
 
     protected static final String INVALID_AUTHENTICATION_TOKEN = "InvalidAuthenticationToken";
 
@@ -101,7 +101,7 @@ public class Office365Client implements Closeable {
     protected LoadingCache<String, UserType> userTypeCache;
     protected LoadingCache<String, String[]> groupIdCache;
 
-    protected int maxDownloadSize = 10_000_000;
+    protected int maxContentLength = -1;
 
     public Office365Client(final DataStoreParams params) {
         this.params = params;
@@ -122,9 +122,9 @@ public class Office365Client implements Closeable {
                 .build();
 
         try {
-            maxDownloadSize = Integer.parseInt(params.getAsString(MAX_DOWNLOAD_SIZE, Integer.toString(maxDownloadSize)));
+            maxContentLength = Integer.parseInt(params.getAsString(MAX_CONTENT_LENGTH, Integer.toString(maxContentLength)));
         } catch (NumberFormatException e) {
-            logger.warn("Failed to parse {}.", params.getAsString(MAX_DOWNLOAD_SIZE), e);
+            logger.warn("Failed to parse {}.", params.getAsString(MAX_CONTENT_LENGTH), e);
         }
 
         final TokenCredentialAuthProvider tokenCredAuthProvider = new TokenCredentialAuthProvider(clientSecretCredential);
@@ -307,7 +307,7 @@ public class Office365Client implements Closeable {
         final StringBuilder sb = new StringBuilder();
         sb.append(page.title).append('\n');
         try (final InputStream in = builder.pages(page.id).content().buildRequest().get()) {
-            sb.append(ComponentUtil.getExtractorFactory().builder(in, Collections.emptyMap()).maxContentLength(maxDownloadSize).extract()
+            sb.append(ComponentUtil.getExtractorFactory().builder(in, Collections.emptyMap()).maxContentLength(maxContentLength).extract()
                     .getContent());
         } catch (final IOException e) {
             logger.warn("Failed to get contents of Page: {}", page.title, e);
@@ -480,15 +480,11 @@ public class Office365Client implements Closeable {
         final String id = "u!" + Base64.getUrlEncoder().encodeToString(attachment.contentUrl.getBytes(Constants.CHARSET_UTF_8))
                 .replaceFirst("=+$", StringUtil.EMPTY).replace('/', '_').replace('+', '-');
         try (InputStream in = client.shares(id).driveItem().content().buildRequest().get()) {
-            return ComponentUtil.getExtractorFactory().builder(in, null).filename(attachment.name).maxContentLength(maxDownloadSize)
+            return ComponentUtil.getExtractorFactory().builder(in, null).filename(attachment.name).maxContentLength(maxContentLength)
                     .extract().getContent();
         } catch (final Exception e) {
             logger.warn("Could not read {}", id, e);
             return StringUtil.EMPTY;
         }
-    }
-
-    public int getMaxDownloadSize() {
-        return maxDownloadSize;
     }
 }

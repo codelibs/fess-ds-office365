@@ -125,7 +125,7 @@ public class OneDriveDataStoreTest extends LastaFluteTestCase {
     //        final Map<String, Object> configMap = new HashMap<>();
     //        configMap.put(OneDriveDataStore.IGNORE_FOLDER, true);
     //        configMap.put(OneDriveDataStore.SUPPORTED_MIMETYPES, new String[] { "text/.*" });
-    //        configMap.put(OneDriveDataStore.MAX_DOWNLOAD_SIZE, OneDriveDataStore.DEFAULT_MAX_SIZE);
+    //        configMap.put(OneDriveDataStore.MAX_CONTENT_LENGTH, OneDriveDataStore.DEFAULT_MAX_SIZE);
     //        scriptMap.put("name", "files.name");
     //        scriptMap.put("description", "files.description");
     //        scriptMap.put("contents", "files.contents");
