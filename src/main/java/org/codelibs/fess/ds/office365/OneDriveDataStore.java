@@ -597,11 +597,15 @@ public class OneDriveDataStore extends Office365DataStore {
                 return ComponentUtil.getExtractorFactory().builder(in, Collections.emptyMap()).filename(item.name)
                         .maxContentLength(maxContentLength).extractorName(extractorName).extract().getContent();
             } catch (final Exception e) {
-                if (ignoreError) {
-                    logger.warn("Failed to get contents: {}", item.name, e);
-                    return StringUtil.EMPTY;
+                if (!ignoreError && !ComponentUtil.getFessConfig().isCrawlerIgnoreContentException()) {
+                    throw new DataStoreCrawlingException(item.webUrl, "Failed to get contents: " + item.name, e);
                 }
-                throw new DataStoreCrawlingException(item.webUrl, "Failed to get contents: " + item.name, e);
+                if (logger.isDebugEnabled()) {
+                    logger.warn("Failed to get contents: {}", item.name, e);
+                } else {
+                    logger.warn("Failed to get contents: {}. {}", item.name, e.getMessage());
+                }
+                return StringUtil.EMPTY;
             }
         }
         return StringUtil.EMPTY;

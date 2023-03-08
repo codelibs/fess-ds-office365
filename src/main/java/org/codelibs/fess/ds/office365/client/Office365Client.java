@@ -30,7 +30,9 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.fess.Constants;
+import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.entity.DataStoreParams;
+import org.codelibs.fess.exception.DataStoreCrawlingException;
 import org.codelibs.fess.exception.DataStoreException;
 import org.codelibs.fess.util.ComponentUtil;
 import org.slf4j.Logger;
@@ -309,8 +311,15 @@ public class Office365Client implements Closeable {
         try (final InputStream in = builder.pages(page.id).content().buildRequest().get()) {
             sb.append(ComponentUtil.getExtractorFactory().builder(in, Collections.emptyMap()).maxContentLength(maxContentLength).extract()
                     .getContent());
-        } catch (final IOException e) {
-            logger.warn("Failed to get contents of Page: {}", page.title, e);
+        } catch (final Exception e) {
+            if (!ComponentUtil.getFessConfig().isCrawlerIgnoreContentException()) {
+                throw new DataStoreCrawlingException(page.title, "Failed to get contents: " + page.id, e);
+            }
+            if (logger.isDebugEnabled()) {
+                logger.warn("Failed to get contents of Page: {}", page.title, e);
+            } else {
+                logger.warn("Failed to get contents of Page: {}. {}", page.title, e.getMessage());
+            }
         }
         return sb.toString();
     }
@@ -483,7 +492,14 @@ public class Office365Client implements Closeable {
             return ComponentUtil.getExtractorFactory().builder(in, null).filename(attachment.name).maxContentLength(maxContentLength)
                     .extract().getContent();
         } catch (final Exception e) {
-            logger.warn("Could not read {}", id, e);
+            if (!ComponentUtil.getFessConfig().isCrawlerIgnoreContentException()) {
+                throw new CrawlingAccessException(e);
+            }
+            if (logger.isDebugEnabled()) {
+                logger.warn("Could not get a text.", e);
+            } else {
+                logger.warn("Could not get a text. {}", e.getMessage());
+            }
             return StringUtil.EMPTY;
         }
     }
