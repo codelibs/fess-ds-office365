@@ -25,6 +25,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -74,6 +75,7 @@ public class TeamsDataStore extends Office365DataStore {
 
     // parameters
     private static final String TEAM_ID = "team_id";
+    private static final String EXCLUDE_TEAM_ID = "exclude_team_ids";
     private static final String CHANNEL_ID = "channel_id";
     private static final String CHAT_ID = "chat_id";
     protected static final String NUMBER_OF_THREADS = "number_of_threads";
@@ -121,6 +123,7 @@ public class TeamsDataStore extends Office365DataStore {
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap) {
         final Map<String, Object> configMap = new HashMap<>();
         configMap.put(TEAM_ID, getTeamId(paramMap));
+        configMap.put(EXCLUDE_TEAM_ID, getExcludeTeamIds(paramMap));
         configMap.put(CHANNEL_ID, getChannelId(paramMap));
         configMap.put(CHAT_ID, getChatId(paramMap));
         configMap.put(IGNORE_REPLIES, isIgnoreReplies(paramMap));
@@ -260,11 +263,16 @@ public class TeamsDataStore extends Office365DataStore {
                 }, teamId);
             }
         } else if (teamId == null) {
+            final Set<String> excludeGroupIdSet = getExcludeGroupIdSet(configMap, client);
             client.geTeams(Collections.emptyList(), g -> {
                 if (logger.isDebugEnabled()) {
                     logger.debug("Team: {} : {}", g.id, ToStringBuilder.reflectionToString(g));
                 } else {
                     logger.info("Team: {} : {}", g.id, g.displayName);
+                }
+                if (excludeGroupIdSet.contains(g.id)) {
+                    logger.info("Skpped Team: {} : {}", g.id, g.displayName);
+                    return;
                 }
                 client.getChannels(Collections.emptyList(), c -> {
                     if (logger.isDebugEnabled()) {
@@ -294,6 +302,17 @@ public class TeamsDataStore extends Office365DataStore {
         }
     }
 
+    protected Set<String> getExcludeGroupIdSet(final Map<String, Object> configMap, final Office365Client client) {
+        final String[] teamIds = (String[]) configMap.get(EXCLUDE_TEAM_ID);
+        return StreamUtil.stream(teamIds).get(stream -> stream.map(teamId -> {
+            final Group g = client.getGroupById(teamId);
+            if (g == null) {
+                throw new DataStoreException("Could not find a team: " + teamId);
+            }
+            return g.id;
+        }).collect(Collectors.toSet()));
+    }
+
     protected DateTimeFormatter getTitleDateformat(final DataStoreParams paramMap) {
         return DateTimeFormatter.ofPattern(paramMap.getAsString(TITLE_DATEFORMAT, "yyyy/MM/dd'T'HH:mm:ss"));
     }
@@ -316,6 +335,15 @@ public class TeamsDataStore extends Office365DataStore {
 
     protected String getTeamId(final DataStoreParams paramMap) {
         return paramMap.getAsString(TEAM_ID);
+    }
+
+    protected String[] getExcludeTeamIds(final DataStoreParams paramMap) {
+        final String idStr = paramMap.getAsString(EXCLUDE_TEAM_ID);
+        if (StringUtil.isBlank(idStr)) {
+            return new String[0];
+        }
+        return StreamUtil.split(idStr, ",")
+                .get(stream -> stream.map(s -> s.trim()).filter(StringUtil::isNotBlank).toArray(n -> new String[n]));
     }
 
     protected String getChannelId(final DataStoreParams paramMap) {
