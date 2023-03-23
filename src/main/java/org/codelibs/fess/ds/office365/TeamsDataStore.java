@@ -264,6 +264,9 @@ public class TeamsDataStore extends Office365DataStore {
             }
         } else if (teamId == null) {
             final Set<String> excludeGroupIdSet = getExcludeGroupIdSet(configMap, client);
+            if (logger.isDebugEnabled()) {
+                logger.debug("Exclude Group IDs: {}", excludeGroupIdSet);
+            }
             client.geTeams(Collections.emptyList(), g -> {
                 if (logger.isDebugEnabled()) {
                     logger.debug("Team: {} : {}", g.id, ToStringBuilder.reflectionToString(g));
@@ -308,6 +311,9 @@ public class TeamsDataStore extends Office365DataStore {
             final Group g = client.getGroupById(teamId);
             if (g == null) {
                 throw new DataStoreException("Could not find a team: " + teamId);
+            }
+            if (logger.isDebugEnabled()) {
+                logger.debug("Team -> Group: {} -> {}", teamId, g.id);
             }
             return g.id;
         }).collect(Collectors.toSet()));
