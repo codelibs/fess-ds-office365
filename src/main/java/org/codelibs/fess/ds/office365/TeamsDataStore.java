@@ -76,6 +76,7 @@ public class TeamsDataStore extends Office365DataStore {
     // parameters
     private static final String TEAM_ID = "team_id";
     private static final String EXCLUDE_TEAM_ID = "exclude_team_ids";
+    private static final String INCLUDE_VISIBILITY = "include_visibility";
     private static final String CHANNEL_ID = "channel_id";
     private static final String CHAT_ID = "chat_id";
     protected static final String NUMBER_OF_THREADS = "number_of_threads";
@@ -124,6 +125,7 @@ public class TeamsDataStore extends Office365DataStore {
         final Map<String, Object> configMap = new HashMap<>();
         configMap.put(TEAM_ID, getTeamId(paramMap));
         configMap.put(EXCLUDE_TEAM_ID, getExcludeTeamIds(paramMap));
+        configMap.put(INCLUDE_VISIBILITY, getIncludeVisibilities(paramMap));
         configMap.put(CHANNEL_ID, getChannelId(paramMap));
         configMap.put(CHAT_ID, getChatId(paramMap));
         configMap.put(IGNORE_REPLIES, isIgnoreReplies(paramMap));
@@ -277,6 +279,10 @@ public class TeamsDataStore extends Office365DataStore {
                     logger.info("Skpped Team: {} : {}", g.id, g.displayName);
                     return;
                 }
+                if (!isTargetVisibility(configMap, g.visibility)) {
+                    logger.info("Skpped Team: {} : {} : {}", g.id, g.displayName, g.visibility);
+                    return;
+                }
                 client.getChannels(Collections.emptyList(), c -> {
                     if (logger.isDebugEnabled()) {
                         logger.debug("Channel: {} : {}", c.id, ToStringBuilder.reflectionToString(c));
@@ -319,6 +325,19 @@ public class TeamsDataStore extends Office365DataStore {
         }).collect(Collectors.toSet()));
     }
 
+    protected boolean isTargetVisibility(final Map<String, Object> configMap, final String visibility) {
+        final String[] visibilities = (String[]) configMap.get(INCLUDE_VISIBILITY);
+        if (visibilities.length == 0) {
+            return true;
+        }
+        for (final String value : visibilities) {
+            if (value.equalsIgnoreCase(visibility)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     protected DateTimeFormatter getTitleDateformat(final DataStoreParams paramMap) {
         return DateTimeFormatter.ofPattern(paramMap.getAsString(TITLE_DATEFORMAT, "yyyy/MM/dd'T'HH:mm:ss"));
     }
@@ -345,6 +364,15 @@ public class TeamsDataStore extends Office365DataStore {
 
     protected String[] getExcludeTeamIds(final DataStoreParams paramMap) {
         final String idStr = paramMap.getAsString(EXCLUDE_TEAM_ID);
+        if (StringUtil.isBlank(idStr)) {
+            return new String[0];
+        }
+        return StreamUtil.split(idStr, ",")
+                .get(stream -> stream.map(s -> s.trim()).filter(StringUtil::isNotBlank).toArray(n -> new String[n]));
+    }
+
+    protected String[] getIncludeVisibilities(final DataStoreParams paramMap) {
+        final String idStr = paramMap.getAsString(INCLUDE_VISIBILITY);
         if (StringUtil.isBlank(idStr)) {
             return new String[0];
         }
