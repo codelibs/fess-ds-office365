@@ -47,6 +47,7 @@
 									<include>com.azure:azure-core</include>
 									<include>com.azure:azure-core-http-netty</include>
 									<include>com.azure:azure-identity</include>
+									<include>com.azure:azure-json</include>
 									<include>com.fasterxml.jackson.datatype:jackson-datatype-jsr310</include>
 									<include>com.fasterxml.jackson.dataformat:jackson-dataformat-xml</include>
 									<include>com.microsoft.azure:msal4j</include>
