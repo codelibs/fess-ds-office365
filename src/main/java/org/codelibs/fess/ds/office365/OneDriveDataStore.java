@@ -50,6 +50,7 @@ import org.codelibs.fess.exception.DataStoreCrawlingException;
 import org.codelibs.fess.helper.CrawlerStatsHelper;
 import org.codelibs.fess.helper.CrawlerStatsHelper.StatsAction;
 import org.codelibs.fess.helper.CrawlerStatsHelper.StatsKeyObject;
+import org.codelibs.fess.mylasta.direction.FessConfig;
 import org.codelibs.fess.helper.PermissionHelper;
 import org.codelibs.fess.helper.SystemHelper;
 import org.codelibs.fess.util.ComponentUtil;
@@ -304,6 +305,7 @@ public class OneDriveDataStore extends Office365DataStore {
             final Office365Client client, final Function<GraphServiceClient<Request>, DriveRequestBuilder> builder, final DriveItem item,
             final List<String> roles) {
         final CrawlerStatsHelper crawlerStatsHelper = ComponentUtil.getCrawlerStatsHelper();
+        final FessConfig fessConfig = ComponentUtil.getFessConfig();
         final String mimetype;
         final Hashes hashes;
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
@@ -406,6 +408,9 @@ public class OneDriveDataStore extends Office365DataStore {
             final PermissionHelper permissionHelper = ComponentUtil.getPermissionHelper();
             StreamUtil.split(paramMap.getAsString(DEFAULT_PERMISSIONS), ",")
                     .of(stream -> stream.filter(StringUtil::isNotBlank).map(permissionHelper::encode).forEach(permissions::add));
+            if (defaultDataMap.get(fessConfig.getIndexFieldRole()) instanceof List<?> roleTypeList) {
+                roleTypeList.stream().map(s -> (String) s).forEach(permissions::add);
+            }
             filesMap.put(FILE_ROLES, permissions.stream().distinct().collect(Collectors.toList()));
 
             resultMap.put(FILE, filesMap);
