@@ -18,19 +18,19 @@ package org.codelibs.fess.ds.office365;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.entity.DataStoreParams;
 import org.codelibs.fess.util.ComponentUtil;
 import org.dbflute.utflute.lastaflute.LastaFluteTestCase;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.microsoft.graph.models.DriveItem;
 import com.microsoft.graph.models.ItemReference;
 
 public class OneDriveDataStoreTest extends LastaFluteTestCase {
 
-    private static final Logger logger = LoggerFactory.getLogger(OneDriveDataStoreTest.class);
+    private static final Logger logger = LogManager.getLogger(OneDriveDataStoreTest.class);
 
     // for test
     public static final String tenant = "";

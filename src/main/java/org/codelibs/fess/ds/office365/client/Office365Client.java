@@ -16,7 +16,6 @@
 package org.codelibs.fess.ds.office365.client;
 
 import java.io.Closeable;
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -28,6 +27,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.builder.ToStringBuilder;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.fess.Constants;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
@@ -35,8 +36,6 @@ import org.codelibs.fess.entity.DataStoreParams;
 import org.codelibs.fess.exception.DataStoreCrawlingException;
 import org.codelibs.fess.exception.DataStoreException;
 import org.codelibs.fess.util.ComponentUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.azure.identity.ClientSecretCredential;
 import com.azure.identity.ClientSecretCredentialBuilder;
@@ -85,7 +84,7 @@ import okhttp3.Request;
 
 public class Office365Client implements Closeable {
 
-    private static final Logger logger = LoggerFactory.getLogger(Office365Client.class);
+    private static final Logger logger = LogManager.getLogger(Office365Client.class);
 
     protected static final String TENANT_PARAM = "tenant";
     protected static final String CLIENT_ID_PARAM = "client_id";

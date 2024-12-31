@@ -32,6 +32,8 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.builder.ToStringBuilder;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.charfilter.HTMLStripCharFilter;
 import org.codelibs.core.exception.InterruptedRuntimeException;
 import org.codelibs.core.lang.StringUtil;
@@ -53,8 +55,6 @@ import org.codelibs.fess.helper.CrawlerStatsHelper.StatsKeyObject;
 import org.codelibs.fess.helper.PermissionHelper;
 import org.codelibs.fess.helper.SystemHelper;
 import org.codelibs.fess.util.ComponentUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.microsoft.graph.models.AadUserConversationMember;
 import com.microsoft.graph.models.BodyType;
@@ -71,7 +71,7 @@ public class TeamsDataStore extends Office365DataStore {
 
     private static final String MESSAGE_CONTENT = "content";
 
-    private static final Logger logger = LoggerFactory.getLogger(TeamsDataStore.class);
+    private static final Logger logger = LogManager.getLogger(TeamsDataStore.class);
 
     // parameters
     private static final String TEAM_ID = "team_id";

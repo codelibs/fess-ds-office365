@@ -15,14 +15,14 @@
  */
 package org.codelibs.fess.ds.office365;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codelibs.fess.util.ComponentUtil;
 import org.dbflute.utflute.lastaflute.LastaFluteTestCase;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class TeamsDataStoreTest extends LastaFluteTestCase {
 
-    private static final Logger logger = LoggerFactory.getLogger(TeamsDataStoreTest.class);
+    private static final Logger logger = LogManager.getLogger(TeamsDataStoreTest.class);
 
     private TeamsDataStore dataStore;
 

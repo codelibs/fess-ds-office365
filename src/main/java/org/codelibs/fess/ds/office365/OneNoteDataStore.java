@@ -25,6 +25,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codelibs.core.exception.InterruptedRuntimeException;
 import org.codelibs.fess.Constants;
 import org.codelibs.fess.app.service.FailureUrlService;
@@ -38,8 +40,6 @@ import org.codelibs.fess.helper.CrawlerStatsHelper;
 import org.codelibs.fess.helper.CrawlerStatsHelper.StatsAction;
 import org.codelibs.fess.helper.CrawlerStatsHelper.StatsKeyObject;
 import org.codelibs.fess.util.ComponentUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.microsoft.graph.core.ClientException;
 import com.microsoft.graph.http.GraphServiceException;
@@ -53,7 +53,7 @@ import okhttp3.Request;
 
 public class OneNoteDataStore extends Office365DataStore {
 
-    private static final Logger logger = LoggerFactory.getLogger(OneNoteDataStore.class);
+    private static final Logger logger = LogManager.getLogger(OneNoteDataStore.class);
 
     // scripts
     protected static final String NOTEBOOK = "notebook";

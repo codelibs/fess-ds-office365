@@ -24,11 +24,11 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codelibs.fess.ds.AbstractDataStore;
 import org.codelibs.fess.ds.office365.client.Office365Client;
 import org.codelibs.fess.util.ComponentUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.microsoft.graph.models.Group;
 import com.microsoft.graph.models.User;
@@ -36,7 +36,7 @@ import com.microsoft.graph.options.QueryOption;
 
 public abstract class Office365DataStore extends AbstractDataStore {
 
-    private static final Logger logger = LoggerFactory.getLogger(Office365DataStore.class);
+    private static final Logger logger = LogManager.getLogger(Office365DataStore.class);
 
     protected void getLicensedUsers(final Office365Client client, final Consumer<User> consumer) {
         client.getUsers(Collections.emptyList(), u -> {

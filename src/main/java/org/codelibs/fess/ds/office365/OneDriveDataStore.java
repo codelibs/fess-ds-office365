@@ -31,6 +31,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codelibs.core.exception.InterruptedRuntimeException;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.stream.StreamUtil;
@@ -50,12 +52,10 @@ import org.codelibs.fess.exception.DataStoreCrawlingException;
 import org.codelibs.fess.helper.CrawlerStatsHelper;
 import org.codelibs.fess.helper.CrawlerStatsHelper.StatsAction;
 import org.codelibs.fess.helper.CrawlerStatsHelper.StatsKeyObject;
-import org.codelibs.fess.mylasta.direction.FessConfig;
 import org.codelibs.fess.helper.PermissionHelper;
 import org.codelibs.fess.helper.SystemHelper;
+import org.codelibs.fess.mylasta.direction.FessConfig;
 import org.codelibs.fess.util.ComponentUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.microsoft.graph.core.ClientException;
 import com.microsoft.graph.http.GraphServiceException;
@@ -72,7 +72,7 @@ import okhttp3.Request;
 
 public class OneDriveDataStore extends Office365DataStore {
 
-    private static final Logger logger = LoggerFactory.getLogger(OneDriveDataStore.class);
+    private static final Logger logger = LogManager.getLogger(OneDriveDataStore.class);
 
     protected static final long DEFAULT_MAX_SIZE = -1;
 
