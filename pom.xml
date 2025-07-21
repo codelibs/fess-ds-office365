@@ -4,12 +4,12 @@
 	<artifactId>fess-ds-office365</artifactId>
 	<packaging>jar</packaging>
 	<name>Office365 Data Store</name>
-	<version>15.1.0</version>
+	<version>15.1.1-SNAPSHOT</version>
 	<scm>
 		<connection>scm:git:git@github.com:codelibs/fess-ds-office365.git</connection>
 		<developerConnection>scm:git:git@github.com:codelibs/fess-ds-office365.git</developerConnection>
 		<url>https://github.com/codelibs/fess-ds-office365</url>
-	  <tag>fess-ds-office365-15.1.0</tag>
+	  <tag>HEAD</tag>
   </scm>
 	<parent>
 		<groupId>org.codelibs.fess</groupId>
