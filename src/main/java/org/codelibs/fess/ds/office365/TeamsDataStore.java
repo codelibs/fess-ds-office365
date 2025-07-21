@@ -249,7 +249,7 @@ public class TeamsDataStore extends Office365DataStore {
         final StringBuilder bodyBuf = new StringBuilder(1000);
         final Map<String, Object> configMap = new HashMap<>();
         configMap.put(APPEND_ATTACHMENT, false);
-        msgList.stream().forEach(m -> bodyBuf.append(getConent(configMap, m, client)));
+        msgList.stream().forEach(m -> bodyBuf.append(getContent(configMap, m, client)));
         msg.body.content = bodyBuf.toString();
         msg.channelIdentity = defaultMsg.channelIdentity;
         msg.createdDateTime = defaultMsg.createdDateTime;
@@ -704,7 +704,7 @@ public class TeamsDataStore extends Office365DataStore {
         try {
             crawlerStatsHelper.begin(statsKey);
 
-            messageMap.put(MESSAGE_CONTENT, getConent(configMap, message, client));
+            messageMap.put(MESSAGE_CONTENT, getContent(configMap, message, client));
             messageMap.put(MESSAGE_TITLE, getTitle(configMap, message));
 
             messageMap.put(MESSAGE_ATTACHMENTS, message.attachments);
@@ -836,7 +836,7 @@ public class TeamsDataStore extends Office365DataStore {
      * @param client The Office365Client for API communication.
      * @return The formatted message content.
      */
-    protected String getConent(final Map<String, Object> configMap, final ChatMessage message, final Office365Client client) {
+    protected String getContent(final Map<String, Object> configMap, final ChatMessage message, final Office365Client client) {
         final StringBuilder bodyBuf = new StringBuilder(1000);
         if (message.body != null) {
             switch (message.body.contentType) {
