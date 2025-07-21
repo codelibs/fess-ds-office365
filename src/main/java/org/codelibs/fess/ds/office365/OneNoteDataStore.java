@@ -51,22 +51,46 @@ import com.microsoft.graph.requests.OnenoteRequestBuilder;
 
 import okhttp3.Request;
 
+/**
+ * This class is a data store for crawling and indexing content from Microsoft OneNote.
+ * It supports crawling notebooks from user accounts, groups, and SharePoint sites.
+ * It extracts notebook content, metadata, and permissions for indexing.
+ */
 public class OneNoteDataStore extends Office365DataStore {
+
+    /**
+     * Default constructor.
+     */
+    public OneNoteDataStore() {
+        super();
+    }
 
     private static final Logger logger = LogManager.getLogger(OneNoteDataStore.class);
 
     // scripts
+    /** Key for the notebook object in the script map. */
     protected static final String NOTEBOOK = "notebook";
+    /** Key for the notebook name in the script map. */
     protected static final String NOTEBOOK_NAME = "name";
+    /** Key for the notebook contents in the script map. */
     protected static final String NOTEBOOK_CONTENTS = "contents";
+    /** Key for the notebook size in the script map. */
     protected static final String NOTEBOOK_SIZE = "size";
+    /** Key for the notebook creation date in the script map. */
     protected static final String NOTEBOOK_CREATED = "created";
+    /** Key for the notebook last modified date in the script map. */
     protected static final String NOTEBOOK_LAST_MODIFIED = "last_modified";
+    /** Key for the notebook web URL in the script map. */
     protected static final String NOTEBOOK_WEB_URL = "web_url";
+    /** Key for the notebook roles in the script map. */
     protected static final String NOTEBOOK_ROLES = "roles";
+    /** Parameter name for the number of threads. */
     protected static final String NUMBER_OF_THREADS = "number_of_threads";
+    /** Parameter name for enabling the site note crawler. */
     protected static final String SITE_NOTE_CRAWLER = "site_note_crawler";
+    /** Parameter name for enabling the user note crawler. */
     protected static final String USER_NOTE_CRAWLER = "user_note_crawler";
+    /** Parameter name for enabling the group note crawler. */
     protected static final String GROUP_NOTE_CRAWLER = "group_note_crawler";
 
     @Override
@@ -110,22 +134,57 @@ public class OneNoteDataStore extends Office365DataStore {
         }
     }
 
+    /**
+     * Creates a new Office365Client.
+     *
+     * @param params The data store parameters.
+     * @return A new Office365Client.
+     */
     protected Office365Client createClient(final DataStoreParams params) {
         return new Office365Client(params);
     }
 
+    /**
+     * Checks if the group note crawler is enabled.
+     *
+     * @param paramMap The data store parameters.
+     * @return true if the group note crawler is enabled, false otherwise.
+     */
     protected boolean isGroupNoteCrawler(final DataStoreParams paramMap) {
         return Constants.TRUE.equalsIgnoreCase(paramMap.getAsString(GROUP_NOTE_CRAWLER, Constants.TRUE));
     }
 
+    /**
+     * Checks if the user note crawler is enabled.
+     *
+     * @param paramMap The data store parameters.
+     * @return true if the user note crawler is enabled, false otherwise.
+     */
     protected boolean isUserNoteCrawler(final DataStoreParams paramMap) {
         return Constants.TRUE.equalsIgnoreCase(paramMap.getAsString(USER_NOTE_CRAWLER, Constants.TRUE));
     }
 
+    /**
+     * Checks if the site note crawler is enabled.
+     *
+     * @param paramMap The data store parameters.
+     * @return true if the site note crawler is enabled, false otherwise.
+     */
     protected boolean isSiteNoteCrawler(final DataStoreParams paramMap) {
         return Constants.TRUE.equalsIgnoreCase(paramMap.getAsString(SITE_NOTE_CRAWLER, Constants.TRUE));
     }
 
+    /**
+     * Stores the site notes.
+     *
+     * @param dataConfig The data configuration.
+     * @param callback The index update callback.
+     * @param paramMap The data store parameters.
+     * @param scriptMap The script map.
+     * @param defaultDataMap The default data map.
+     * @param executorService The executor service.
+     * @param client The Office365Client.
+     */
     protected void storeSiteNotes(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final ExecutorService executorService,
             final Office365Client client) {
@@ -135,6 +194,17 @@ public class OneNoteDataStore extends Office365DataStore {
                 callback, paramMap, scriptMap, defaultDataMap, client, c -> c.sites(root.id).onenote(), notebook, roles)));
     }
 
+    /**
+     * Stores the users' notes.
+     *
+     * @param dataConfig The data configuration.
+     * @param callback The index update callback.
+     * @param paramMap The data store parameters.
+     * @param scriptMap The script map.
+     * @param defaultDataMap The default data map.
+     * @param executorService The executor service.
+     * @param client The Office365Client.
+     */
     protected void storeUsersNotes(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final ExecutorService executorService,
             final Office365Client client) {
@@ -149,6 +219,17 @@ public class OneNoteDataStore extends Office365DataStore {
         });
     }
 
+    /**
+     * Stores the groups' notes.
+     *
+     * @param dataConfig The data configuration.
+     * @param callback The index update callback.
+     * @param paramMap The data store parameters.
+     * @param scriptMap The script map.
+     * @param defaultDataMap The default data map.
+     * @param executorService The executor service.
+     * @param client The Office365Client.
+     */
     protected void storeGroupsNotes(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final ExecutorService executorService,
             final Office365Client client) {
@@ -159,6 +240,19 @@ public class OneNoteDataStore extends Office365DataStore {
         });
     }
 
+    /**
+     * Processes a notebook.
+     *
+     * @param dataConfig The data configuration.
+     * @param callback The index update callback.
+     * @param paramMap The data store parameters.
+     * @param scriptMap The script map.
+     * @param defaultDataMap The default data map.
+     * @param client The Office365Client.
+     * @param builder The OneNote request builder.
+     * @param notebook The notebook.
+     * @param roles The roles.
+     */
     protected void processNotebook(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Office365Client client,
             final Function<GraphServiceClient<Request>, OnenoteRequestBuilder> builder, final Notebook notebook, final List<String> roles) {
@@ -243,6 +337,13 @@ public class OneNoteDataStore extends Office365DataStore {
         }
     }
 
+    /**
+     * Gets the notebooks.
+     *
+     * @param client The Office365Client.
+     * @param builder The OneNote request builder.
+     * @param consumer The consumer to process each notebook.
+     */
     protected void getNotebooks(final Office365Client client, final Function<GraphServiceClient<Request>, OnenoteRequestBuilder> builder,
             final Consumer<Notebook> consumer) {
         try {
