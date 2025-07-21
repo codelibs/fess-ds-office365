@@ -237,7 +237,6 @@ public class Office365Client implements Closeable {
      * @param id The ID of the user or group.
      * @return The UserType of the specified ID.
      */
-
     public UserType getUserType(final String id) {
         if (StringUtil.isBlank(id)) {
             return UserType.UNKNOWN;
