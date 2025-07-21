@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 CodeLibs Project and the Others.
+ * Copyright 2012-2025 CodeLibs Project and the Others.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,12 +18,11 @@ package org.codelibs.fess.ds.office365.client;
 import java.util.Collections;
 
 import org.apache.commons.lang3.builder.ToStringBuilder;
-import org.codelibs.fess.ds.office365.client.Office365Client;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codelibs.fess.entity.DataStoreParams;
 import org.codelibs.fess.util.ComponentUtil;
 import org.dbflute.utflute.lastaflute.LastaFluteTestCase;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.microsoft.graph.models.Channel;
 import com.microsoft.graph.models.Drive;
@@ -32,7 +31,7 @@ import com.microsoft.graph.models.User;
 
 public class Office365ClientTest extends LastaFluteTestCase {
 
-    private static final Logger logger = LoggerFactory.getLogger(Office365ClientTest.class);
+    private static final Logger logger = LogManager.getLogger(Office365ClientTest.class);
 
     Office365Client client = null;
 

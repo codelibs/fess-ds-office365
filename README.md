@@ -30,25 +30,25 @@ client_secret=***********************
 #### OneDrive
 
 ```
-title=files.name
-content=files.description + "\n" + files.contents
-mimetype=files.mimetype
-created=files.created
-last_modified=files.last_modified
-url=files.web_url
-role=files.roles
+title=file.name
+content=file.description + "\n" + file.contents
+mimetype=file.mimetype
+created=file.created
+last_modified=file.last_modified
+url=file.web_url
+role=file.roles
 ```
 
 | Key | Value |
 | --- | --- |
-| files.name | The name of the file. |
-| files.description | A short description of the file. |
-| files.contents | The text contents of the file |
-| files.mimetype | The MIME type of the file. |
-| files.created | The time at which the file was created. |
-| files.last_modified | The last time the file was modified by anyone. |
-| files.web_url | A link for opening the file in an editor or viewer in a browser. |
-| files.roles | A users/groups who can access the file. |
+| file.name | The name of the file. |
+| file.description | A short description of the file. |
+| file.contents | The text contents of the file |
+| file.mimetype | The MIME type of the file. |
+| file.created | The time at which the file was created. |
+| file.last_modified | The last time the file was modified by anyone. |
+| file.web_url | A link for opening the file in an editor or viewer in a browser. |
+| file.roles | A users/groups who can access the file. |
 
 #### OneNote
 

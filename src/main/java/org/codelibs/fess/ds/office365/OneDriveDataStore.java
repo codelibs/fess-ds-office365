@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 CodeLibs Project and the Others.
+ * Copyright 2012-2025 CodeLibs Project and the Others.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +31,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codelibs.core.exception.InterruptedRuntimeException;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.stream.StreamUtil;
@@ -45,16 +47,15 @@ import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.ds.office365.client.Office365Client;
 import org.codelibs.fess.ds.office365.client.Office365Client.UserType;
 import org.codelibs.fess.entity.DataStoreParams;
-import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.exception.DataStoreCrawlingException;
 import org.codelibs.fess.helper.CrawlerStatsHelper;
 import org.codelibs.fess.helper.CrawlerStatsHelper.StatsAction;
 import org.codelibs.fess.helper.CrawlerStatsHelper.StatsKeyObject;
 import org.codelibs.fess.helper.PermissionHelper;
 import org.codelibs.fess.helper.SystemHelper;
+import org.codelibs.fess.mylasta.direction.FessConfig;
+import org.codelibs.fess.opensearch.config.exentity.DataConfig;
 import org.codelibs.fess.util.ComponentUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.microsoft.graph.core.ClientException;
 import com.microsoft.graph.http.GraphServiceException;
@@ -69,71 +70,139 @@ import com.microsoft.graph.requests.PermissionCollectionPage;
 
 import okhttp3.Request;
 
+/**
+ * This class is a data store for crawling and indexing files in Microsoft OneDrive.
+ * It supports crawling user drives, group drives, and shared document libraries.
+ * It also handles file metadata, permissions, and content extraction.
+ */
 public class OneDriveDataStore extends Office365DataStore {
 
-    private static final Logger logger = LoggerFactory.getLogger(OneDriveDataStore.class);
+    /**
+     * Default constructor.
+     */
+    public OneDriveDataStore() {
+        super();
+    }
 
-    protected static final long DEFAULT_MAX_SIZE = -1;
+    private static final Logger logger = LogManager.getLogger(OneDriveDataStore.class);
 
+    /** Default maximum size of a file to be crawled. */
+    protected static final long DEFAULT_MAX_SIZE = -1L;
+
+    /** Key for the current crawler type in the configuration map. */
     protected static final String CURRENT_CRAWLER = "current_crawler";
+    /** Crawler type for group drives. */
     protected static final String CRAWLER_TYPE_GROUP = "group";
+    /** Crawler type for user drives. */
     protected static final String CRAWLER_TYPE_USER = "user";
+    /** Crawler type for shared drives. */
     protected static final String CRAWLER_TYPE_SHARED = "shared";
+    /** Crawler type for a specific drive. */
     protected static final String CRAWLER_TYPE_DRIVE = "drive";
+    /** Key for drive information in the configuration map. */
     protected static final String DRIVE_INFO = "drive_info";
 
     // parameters
+    /** Parameter name for the maximum content length. */
     protected static final String MAX_CONTENT_LENGTH = "max_content_length";
+    /** Parameter name for ignoring folders. */
     protected static final String IGNORE_FOLDER = "ignore_folder";
+    /** Parameter name for ignoring errors. */
     protected static final String IGNORE_ERROR = "ignore_error";
+    /** Parameter name for supported MIME types. */
     protected static final String SUPPORTED_MIMETYPES = "supported_mimetypes";
+    /** Parameter name for the include pattern for URLs. */
     protected static final String INCLUDE_PATTERN = "include_pattern";
+    /** Parameter name for the exclude pattern for URLs. */
     protected static final String EXCLUDE_PATTERN = "exclude_pattern";
+    /** Parameter name for the URL filter. */
     protected static final String URL_FILTER = "url_filter";
+    /** Parameter name for the drive ID. */
     protected static final String DRIVE_ID = "drive_id";
+    /** Parameter name for default permissions. */
     protected static final String DEFAULT_PERMISSIONS = "default_permissions";
+    /** Parameter name for the number of threads. */
     protected static final String NUMBER_OF_THREADS = "number_of_threads";
+    /** Parameter name for enabling the shared documents drive crawler. */
     protected static final String SHARED_DOCUMENTS_DRIVE_CRAWLER = "shared_documents_drive_crawler";
+    /** Parameter name for enabling the user drive crawler. */
     protected static final String USER_DRIVE_CRAWLER = "user_drive_crawler";
+    /** Parameter name for enabling the group drive crawler. */
     protected static final String GROUP_DRIVE_CRAWLER = "group_drive_crawler";
 
     // scripts
+    /** Key for the file object in the script map. */
     protected static final String FILE = "file";
+    /** Key for the file name in the script map. */
     protected static final String FILE_NAME = "name";
+    /** Key for the file description in the script map. */
     protected static final String FILE_DESCRIPTION = "description";
+    /** Key for the file contents in the script map. */
     protected static final String FILE_CONTENTS = "contents";
+    /** Key for the file MIME type in the script map. */
     protected static final String FILE_MIMETYPE = "mimetype";
+    /** Key for the file type in the script map. */
     protected static final String FILE_FILETYPE = "filetype";
+    /** Key for the file creation date in the script map. */
     protected static final String FILE_CREATED = "created";
+    /** Key for the file last modified date in the script map. */
     protected static final String FILE_LAST_MODIFIED = "last_modified";
+    /** Key for the file size in the script map. */
     protected static final String FILE_SIZE = "size";
+    /** Key for the file web URL in the script map. */
     protected static final String FILE_WEB_URL = "web_url";
+    /** Key for the file URL in the script map. */
     protected static final String FILE_URL = "url";
+    /** Key for the file roles in the script map. */
     protected static final String FILE_ROLES = "roles";
+    /** Key for the file cTag in the script map. */
     protected static final String FILE_CTAG = "ctag";
+    /** Key for the file eTag in the script map. */
     protected static final String FILE_ETAG = "etag";
+    /** Key for the file ID in the script map. */
     protected static final String FILE_ID = "id";
+    /** Key for the file WebDAV URL in the script map. */
     protected static final String FILE_WEBDAV_URL = "webdav_url";
+    /** Key for the file location in the script map. */
     protected static final String FILE_LOCATION = "location";
+    /** Key for the application that created the file in the script map. */
     protected static final String FILE_CREATEDBY_APPLICATION = "createdby_application";
+    /** Key for the device that created the file in the script map. */
     protected static final String FILE_CREATEDBY_DEVICE = "createdby_device";
+    /** Key for the user who created the file in the script map. */
     protected static final String FILE_CREATEDBY_USER = "createdby_user";
+    /** Key for the deleted status of the file in the script map. */
     protected static final String FILE_DELETED = "deleted";
+    /** Key for the file hashes in the script map. */
     protected static final String FILE_HASHES = "hashes";
+    /** Key for the application that last modified the file in the script map. */
     protected static final String FILE_LAST_MODIFIEDBY_APPLICATION = "last_modifiedby_application";
+    /** Key for the device that last modified the file in the script map. */
     protected static final String FILE_LAST_MODIFIEDBY_DEVICE = "last_modifiedby_device";
+    /** Key for the user who last modified the file in the script map. */
     protected static final String FILE_LAST_MODIFIEDBY_USER = "last_modifiedby_user";
+    /** Key for the file image in the script map. */
     protected static final String FILE_IMAGE = "image";
+    /** Key for the file parent in the script map. */
     protected static final String FILE_PARENT = "parent";
+    /** Key for the file parent ID in the script map. */
     protected static final String FILE_PARENT_ID = "parent_id";
+    /** Key for the file parent name in the script map. */
     protected static final String FILE_PARENT_NAME = "parent_name";
+    /** Key for the file parent path in the script map. */
     protected static final String FILE_PARENT_PATH = "parent_path";
+    /** Key for the file photo in the script map. */
     protected static final String FILE_PHOTO = "photo";
+    /** Key for the file publication in the script map. */
     protected static final String FILE_PUBLICATION = "publication";
+    /** Key for the file search result in the script map. */
     protected static final String FILE_SEARCH_RESULT = "search_result";
+    /** Key for the file special folder in the script map. */
     protected static final String FILE_SPECIAL_FOLDER = "special_folder";
+    /** Key for the file video in the script map. */
     protected static final String FILE_VIDEO = "video";
 
+    /** The name of the extractor to use for file content. */
     protected String extractorName = "tikaExtractor";
 
     @Override
@@ -205,10 +274,22 @@ public class OneDriveDataStore extends Office365DataStore {
         }
     }
 
+    /**
+     * Creates a new Office365Client.
+     *
+     * @param params The data store parameters.
+     * @return A new Office365Client.
+     */
     protected Office365Client createClient(final DataStoreParams params) {
         return new Office365Client(params);
     }
 
+    /**
+     * Gets the URL filter from the data store parameters.
+     *
+     * @param paramMap The data store parameters.
+     * @return The URL filter.
+     */
     protected UrlFilter getUrlFilter(final DataStoreParams paramMap) {
         final UrlFilter urlFilter = ComponentUtil.getComponent(UrlFilter.class);
         final String include = paramMap.getAsString(INCLUDE_PATTERN);
@@ -226,26 +307,62 @@ public class OneDriveDataStore extends Office365DataStore {
         return urlFilter;
     }
 
+    /**
+     * Checks if the shared documents drive crawler is enabled.
+     *
+     * @param paramMap The data store parameters.
+     * @return true if the shared documents drive crawler is enabled, false otherwise.
+     */
     protected boolean isSharedDocumentsDriveCrawler(final DataStoreParams paramMap) {
         return Constants.TRUE.equalsIgnoreCase(paramMap.getAsString(SHARED_DOCUMENTS_DRIVE_CRAWLER, Constants.TRUE));
     }
 
+    /**
+     * Checks if the user drive crawler is enabled.
+     *
+     * @param paramMap The data store parameters.
+     * @return true if the user drive crawler is enabled, false otherwise.
+     */
     protected boolean isUserDriveCrawler(final DataStoreParams paramMap) {
         return Constants.TRUE.equalsIgnoreCase(paramMap.getAsString(USER_DRIVE_CRAWLER, Constants.TRUE));
     }
 
+    /**
+     * Checks if the group drive crawler is enabled.
+     *
+     * @param paramMap The data store parameters.
+     * @return true if the group drive crawler is enabled, false otherwise.
+     */
     protected boolean isGroupDriveCrawler(final DataStoreParams paramMap) {
         return Constants.TRUE.equalsIgnoreCase(paramMap.getAsString(GROUP_DRIVE_CRAWLER, Constants.TRUE));
     }
 
+    /**
+     * Checks if folders should be ignored.
+     *
+     * @param paramMap The data store parameters.
+     * @return true if folders should be ignored, false otherwise.
+     */
     protected boolean isIgnoreFolder(final DataStoreParams paramMap) {
         return Constants.TRUE.equalsIgnoreCase(paramMap.getAsString(IGNORE_FOLDER, Constants.TRUE));
     }
 
+    /**
+     * Checks if errors should be ignored.
+     *
+     * @param paramMap The data store parameters.
+     * @return true if errors should be ignored, false otherwise.
+     */
     protected boolean isIgnoreError(final DataStoreParams paramMap) {
         return Constants.TRUE.equalsIgnoreCase(paramMap.getAsString(IGNORE_ERROR, Constants.TRUE));
     }
 
+    /**
+     * Gets the maximum content length from the data store parameters.
+     *
+     * @param paramMap The data store parameters.
+     * @return The maximum content length.
+     */
     protected long getMaxSize(final DataStoreParams paramMap) {
         final String value = paramMap.getAsString(MAX_CONTENT_LENGTH);
         try {
@@ -255,11 +372,30 @@ public class OneDriveDataStore extends Office365DataStore {
         }
     }
 
+    /**
+     * Gets the supported MIME types from the data store parameters.
+     *
+     * @param paramMap The data store parameters.
+     * @return An array of supported MIME types.
+     */
     protected String[] getSupportedMimeTypes(final DataStoreParams paramMap) {
         return StreamUtil.split(paramMap.getAsString(SUPPORTED_MIMETYPES, ".*"), ",")
                 .get(stream -> stream.map(String::trim).toArray(n -> new String[n]));
     }
 
+    /**
+     * Stores the shared documents drive.
+     *
+     * @param dataConfig The data configuration.
+     * @param callback The index update callback.
+     * @param configMap The configuration map.
+     * @param paramMap The data store parameters.
+     * @param scriptMap The script map.
+     * @param defaultDataMap The default data map.
+     * @param executorService The executor service.
+     * @param client The Office365Client.
+     * @param driveId The drive ID.
+     */
     protected void storeSharedDocumentsDrive(final DataConfig dataConfig, final IndexUpdateCallback callback,
             final Map<String, Object> configMap, final DataStoreParams paramMap, final Map<String, String> scriptMap,
             final Map<String, Object> defaultDataMap, final ExecutorService executorService, final Office365Client client,
@@ -269,6 +405,18 @@ public class OneDriveDataStore extends Office365DataStore {
                         client, c -> driveId != null ? c.drives(driveId) : c.drive(), item, Collections.emptyList())));
     }
 
+    /**
+     * Stores the users' drives.
+     *
+     * @param dataConfig The data configuration.
+     * @param callback The index update callback.
+     * @param configMap The configuration map.
+     * @param paramMap The data store parameters.
+     * @param scriptMap The script map.
+     * @param defaultDataMap The default data map.
+     * @param executorService The executor service.
+     * @param client The Office365Client.
+     */
     protected void storeUsersDrive(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, Object> configMap,
             final DataStoreParams paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
             final ExecutorService executorService, final Office365Client client) {
@@ -283,12 +431,29 @@ public class OneDriveDataStore extends Office365DataStore {
         });
     }
 
+    /**
+     * Checks if the current thread is interrupted.
+     *
+     * @param e The exception to check.
+     */
     protected void isInterrupted(final Exception e) {
         if (e instanceof InterruptedException) {
             throw new InterruptedRuntimeException((InterruptedException) e);
         }
     }
 
+    /**
+     * Stores the groups' drives.
+     *
+     * @param dataConfig The data configuration.
+     * @param callback The index update callback.
+     * @param configMap The configuration map.
+     * @param paramMap The data store parameters.
+     * @param scriptMap The script map.
+     * @param defaultDataMap The default data map.
+     * @param executorService The executor service.
+     * @param client The Office365Client.
+     */
     protected void storeGroupsDrive(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, Object> configMap,
             final DataStoreParams paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
             final ExecutorService executorService, final Office365Client client) {
@@ -299,11 +464,26 @@ public class OneDriveDataStore extends Office365DataStore {
         });
     }
 
+    /**
+     * Processes a drive item.
+     *
+     * @param dataConfig The data configuration.
+     * @param callback The index update callback.
+     * @param configMap The configuration map.
+     * @param paramMap The data store parameters.
+     * @param scriptMap The script map.
+     * @param defaultDataMap The default data map.
+     * @param client The Office365Client.
+     * @param builder The drive request builder.
+     * @param item The drive item.
+     * @param roles The roles.
+     */
     protected void processDriveItem(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, Object> configMap,
             final DataStoreParams paramMap, final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap,
             final Office365Client client, final Function<GraphServiceClient<Request>, DriveRequestBuilder> builder, final DriveItem item,
             final List<String> roles) {
         final CrawlerStatsHelper crawlerStatsHelper = ComponentUtil.getCrawlerStatsHelper();
+        final FessConfig fessConfig = ComponentUtil.getFessConfig();
         final String mimetype;
         final Hashes hashes;
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
@@ -406,6 +586,9 @@ public class OneDriveDataStore extends Office365DataStore {
             final PermissionHelper permissionHelper = ComponentUtil.getPermissionHelper();
             StreamUtil.split(paramMap.getAsString(DEFAULT_PERMISSIONS), ",")
                     .of(stream -> stream.filter(StringUtil::isNotBlank).map(permissionHelper::encode).forEach(permissions::add));
+            if (defaultDataMap.get(fessConfig.getIndexFieldRole()) instanceof List<?> roleTypeList) {
+                roleTypeList.stream().map(s -> (String) s).forEach(permissions::add);
+            }
             filesMap.put(FILE_ROLES, permissions.stream().distinct().collect(Collectors.toList()));
 
             resultMap.put(FILE, filesMap);
@@ -468,6 +651,14 @@ public class OneDriveDataStore extends Office365DataStore {
         }
     }
 
+    /**
+     * Gets the permissions for a drive item.
+     *
+     * @param client The Office365Client.
+     * @param builder The drive request builder.
+     * @param item The drive item.
+     * @return A list of permissions.
+     */
     protected List<String> getDriveItemPermissions(final Office365Client client,
             final Function<GraphServiceClient<Request>, DriveRequestBuilder> builder, final DriveItem item) {
         final List<String> permissions = new ArrayList<>();
@@ -485,6 +676,13 @@ public class OneDriveDataStore extends Office365DataStore {
         return permissions;
     }
 
+    /**
+     * Assigns a permission to a user or group.
+     *
+     * @param client The Office365Client.
+     * @param permissions The list of permissions.
+     * @param permission The permission to assign.
+     */
     protected void assignPermission(final Office365Client client, final List<String> permissions, final Permission permission) {
         final SystemHelper systemHelper = ComponentUtil.getSystemHelper();
         final String id = permission.grantedToV2.user.id;
@@ -539,6 +737,12 @@ public class OneDriveDataStore extends Office365DataStore {
         }
     }
 
+    /**
+     * Gets the user email from a permission.
+     *
+     * @param permission The permission.
+     * @return The user email.
+     */
     protected String getUserEmail(final Permission permission) {
         if (permission.grantedToV2 != null && permission.grantedToV2.user != null && permission.grantedToV2.user.displayName != null) {
             // TODO email?
@@ -547,6 +751,14 @@ public class OneDriveDataStore extends Office365DataStore {
         return null;
     }
 
+    /**
+     * Gets the URL for a drive item.
+     *
+     * @param configMap The configuration map.
+     * @param paramMap The data store parameters.
+     * @param item The drive item.
+     * @return The URL.
+     */
     protected String getUrl(final Map<String, Object> configMap, final DataStoreParams paramMap, final DriveItem item) {
         if (item.webUrl == null) {
             return null;
@@ -577,6 +789,12 @@ public class OneDriveDataStore extends Office365DataStore {
         return baseUrl + "/Documents/" + path;
     }
 
+    /**
+     * Encodes a URL string.
+     *
+     * @param s The string to encode.
+     * @return The encoded string.
+     */
     protected String encodeUrl(final String s) {
         if (StringUtil.isEmpty(s)) {
             return s;
@@ -589,6 +807,16 @@ public class OneDriveDataStore extends Office365DataStore {
         }
     }
 
+    /**
+     * Gets the contents of a drive item.
+     *
+     * @param client The Office365Client.
+     * @param builder The drive request builder.
+     * @param item The drive item.
+     * @param maxContentLength The maximum content length.
+     * @param ignoreError true to ignore errors.
+     * @return The contents of the drive item.
+     */
     protected String getDriveItemContents(final Office365Client client,
             final Function<GraphServiceClient<Request>, DriveRequestBuilder> builder, final DriveItem item, final long maxContentLength,
             final boolean ignoreError) {
@@ -611,11 +839,26 @@ public class OneDriveDataStore extends Office365DataStore {
         return StringUtil.EMPTY;
     }
 
+    /**
+     * Gets the drive items in a drive.
+     *
+     * @param client The Office365Client.
+     * @param builder The drive request builder.
+     * @param consumer The consumer to process each drive item.
+     */
     protected void getDriveItemsInDrive(final Office365Client client,
             final Function<GraphServiceClient<Request>, DriveRequestBuilder> builder, final Consumer<DriveItem> consumer) {
         getDriveItemChildren(client, builder, consumer, null);
     }
 
+    /**
+     * Gets the children of a drive item.
+     *
+     * @param client The Office365Client.
+     * @param builder The drive request builder.
+     * @param consumer The consumer to process each drive item.
+     * @param item The drive item.
+     */
     protected void getDriveItemChildren(final Office365Client client,
             final Function<GraphServiceClient<Request>, DriveRequestBuilder> builder, final Consumer<DriveItem> consumer,
             final DriveItem item) {
@@ -653,6 +896,11 @@ public class OneDriveDataStore extends Office365DataStore {
         }
     }
 
+    /**
+     * Sets the name of the extractor to use for file content.
+     *
+     * @param extractorName The name of the extractor.
+     */
     public void setExtractorName(final String extractorName) {
         this.extractorName = extractorName;
     }
